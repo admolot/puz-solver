@@ -1,12 +1,13 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz
+import os
 
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v3.3")
-        self.root.geometry("1000x700")
+        self.root.title("Python .puz Solver - v4.0")
+        self.root.geometry("1200x750") # Slightly wider for the sidebar
 
         # Game State
         self.puzzle = None
@@ -16,7 +17,8 @@ class CrosswordApp:
         self.user_grid = []     
         self.grid_numbers = {}  
         self.clue_mapping = None
-        self.is_redacted = False # New flag to track if answers are 'X'
+        self.is_redacted = False
+        self.current_file_path = ""
         
         # Navigation State
         self.cursor_col = 0
@@ -25,8 +27,12 @@ class CrosswordApp:
         
         # Settings Variables
         self.var_error_check = tk.BooleanVar(value=False)
+        self.var_ctrl_reveal = tk.BooleanVar(value=True) # Ctrl option is back
         self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
         self.cell_size = 35 
+        
+        # UI State
+        self.sidebar_visible = False
 
         # --- UI Layout ---
         
@@ -35,7 +41,7 @@ class CrosswordApp:
         
         # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Open .puz File", command=self.load_puz_file)
+        file_menu.add_command(label="Open .puz File", command=self.browse_file)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -49,6 +55,8 @@ class CrosswordApp:
         options_menu = tk.Menu(menubar, tearoff=0)
         options_menu.add_checkbutton(label="Error Check Mode", onvalue=True, offvalue=False, 
                                      variable=self.var_error_check, command=self.refresh_grid)
+        options_menu.add_checkbutton(label="Enable 'Ctrl' to Reveal Letter", onvalue=True, offvalue=False, 
+                                     variable=self.var_ctrl_reveal)
         options_menu.add_separator()
         options_menu.add_radiobutton(label="At end of word: Jump to Next", value="next", variable=self.var_end_behavior)
         options_menu.add_radiobutton(label="At end of word: Stay", value="stay", variable=self.var_end_behavior)
@@ -56,23 +64,38 @@ class CrosswordApp:
         menubar.add_cascade(label="Options", menu=options_menu)
         self.root.config(menu=menubar)
 
-        # Main Containers
-        top_frame = tk.Frame(self.root, pady=10)
+        # Top Toolbar / Info Frame
+        top_frame = tk.Frame(self.root, pady=5, padx=5, bg="#f0f0f0")
         top_frame.pack(side=tk.TOP, fill=tk.X)
         
-        main_content = tk.Frame(self.root)
-        main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
+        # Sidebar Toggle Button
+        self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
+        self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 10))
 
         # Current Clue Display
-        self.lbl_current_clue = tk.Label(top_frame, text="Open a file to begin", font=("Arial", 14, "bold"), wraplength=800)
-        self.lbl_current_clue.pack()
+        self.lbl_current_clue = tk.Label(top_frame, text="Open a file to begin", font=("Arial", 14, "bold"), wraplength=900, bg="#f0f0f0")
+        self.lbl_current_clue.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Grid
-        self.canvas = tk.Canvas(main_content, bg="white", highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH)
+        # Main Content Area (Holds Sidebar, Grid, Clues)
+        self.main_content = tk.Frame(self.root)
+        self.main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
 
-        # Clues Lists
-        right_panel = tk.Frame(main_content)
+        # 1. Sidebar (File Browser) - Hidden by default
+        self.sidebar_frame = tk.Frame(self.main_content, width=200, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1)
+        self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
+        self.sidebar_label.pack(fill=tk.X, pady=2)
+        
+        self.file_listbox = tk.Listbox(self.sidebar_frame, font=("Arial", 9), bg="white")
+        self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
+        self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
+
+        # 2. Grid (Left/Center)
+        # Added padx=30 to give space between grid and clues
+        self.canvas = tk.Canvas(self.main_content, bg="white", highlightthickness=0)
+        self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
+
+        # 3. Clues Lists (Right)
+        right_panel = tk.Frame(self.main_content)
         right_panel.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
         
         lbl_across = tk.Label(right_panel, text="Across", font=("Arial", 12, "bold"))
@@ -89,34 +112,39 @@ class CrosswordApp:
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
         self.root.bind("<Tab>", lambda e: self.jump_to_next_word())
+        # Restore Ctrl Key Bindings
+        self.root.bind("<Control_L>", self.reveal_current_letter)
+        self.root.bind("<Control_R>", self.reveal_current_letter)
 
-    def load_puz_file(self):
+    def browse_file(self):
         filename = filedialog.askopenfilename(filetypes=[("Puzzle Files", "*.puz"), ("All Files", "*.*")])
-        if not filename: return
+        if filename:
+            self.load_puz_file(filename)
 
+    def load_puz_file(self, filename):
         try:
             self.puzzle = puz.read(filename)
+            self.current_file_path = filename
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file.\n\nDetails: {e}")
             return
+
+        # Refresh Sidebar with files in this folder
+        self.update_sidebar(os.path.dirname(filename))
 
         self.width = self.puzzle.width
         self.height = self.puzzle.height
         
         self.solution_grid = list(self.puzzle.solution)
         
-        # --- NEW: Check for Redacted/Hidden Answers ---
+        # Redaction Check
         self.is_redacted = False
-        # Count how many 'X's are in the solution
         x_count = self.solution_grid.count('X') + self.solution_grid.count('x')
         total_cells = len(self.solution_grid) - self.solution_grid.count('.')
         
         if total_cells > 0 and (x_count / total_cells) > 0.8:
             self.is_redacted = True
-            messagebox.showwarning("Hidden Answers", 
-                                   "This puzzle file has redacted answers (it lists 'X' as the solution).\n\n"
-                                   "'Reveal' and 'Error Check' will be disabled so you can solve it without interference.")
-            # Force Error Check OFF
+            # We silently disable error check, user can re-enable if they really want
             self.var_error_check.set(False)
 
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
@@ -134,6 +162,54 @@ class CrosswordApp:
 
         self.refresh_grid()
         self.update_clue_display()
+        
+        # Show sidebar automatically on first load?
+        if not self.sidebar_visible:
+            self.toggle_sidebar()
+
+    def update_sidebar(self, folder_path):
+        self.file_listbox.delete(0, tk.END)
+        try:
+            files = [f for f in os.listdir(folder_path) if f.lower().endswith('.puz')]
+            files.sort()
+            for f in files:
+                self.file_listbox.insert(tk.END, f)
+                
+            # Highlight current file
+            current_name = os.path.basename(self.current_file_path)
+            try:
+                idx = files.index(current_name)
+                self.file_listbox.selection_set(idx)
+                self.file_listbox.see(idx)
+            except ValueError:
+                pass
+        except Exception:
+            pass
+
+    def toggle_sidebar(self):
+        if self.sidebar_visible:
+            self.sidebar_frame.pack_forget()
+            self.sidebar_visible = False
+            self.btn_sidebar.config(relief=tk.GROOVE, bg="#f0f0f0")
+        else:
+            # Pack sidebar before everything else to be on the left
+            self.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
+            # Re-pack others to ensure order (Sidebar -> Grid -> Clues)
+            self.canvas.pack_forget()
+            self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
+            
+            self.sidebar_visible = True
+            self.btn_sidebar.config(relief=tk.SUNKEN, bg="#ccc")
+
+    def on_file_select(self, event):
+        selection = self.file_listbox.curselection()
+        if not selection: return
+        
+        filename = self.file_listbox.get(selection[0])
+        full_path = os.path.join(os.path.dirname(self.current_file_path), filename)
+        
+        if full_path != self.current_file_path:
+            self.load_puz_file(full_path)
 
     def parse_clues(self):
         self.clue_mapping = self.puzzle.clue_numbering()
@@ -197,7 +273,6 @@ class CrosswordApp:
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
-                    # Only show red errors if NOT redacted
                     if self.var_error_check.get() and not self.is_redacted:
                         if cell_val != sol_val:
                             text_color = "red"
@@ -232,6 +307,10 @@ class CrosswordApp:
         
         key = event.keysym
         
+        # If Ctrl is held, block standard typing (to prevent glitches)
+        if event.state & 0x0004:
+            return "break"
+        
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 
@@ -257,22 +336,33 @@ class CrosswordApp:
             
             self.user_grid[idx] = char
             self.refresh_grid()
-
-            # ALWAYS move forward
             self.step_forward()
         
         return "break"
 
-    def reveal_current_word(self):
-        """Reveal the entire current word (Across or Down)"""
+    def reveal_current_letter(self, event):
+        """Ctrl Key: Reveal current letter and move next"""
         if not self.puzzle: return
+        if not self.var_ctrl_reveal.get(): return
+        if self.is_redacted: return # Don't fill X's
+
+        idx = self.get_index(self.cursor_col, self.cursor_row)
+        correct_char = self.solution_grid[idx]
         
-        # --- CHECK IF REDACTED ---
+        if correct_char == '.': return
+        
+        self.user_grid[idx] = correct_char
+        self.refresh_grid()
+        self.step_forward()
+        return "break"
+
+    def reveal_current_word(self):
+        """Reveal the entire current word"""
+        if not self.puzzle: return
         if self.is_redacted:
-            messagebox.showinfo("Cannot Reveal", "This puzzle has hidden answers (all 'X's). The Reveal function cannot show the real word.")
+            messagebox.showinfo("Cannot Reveal", "This puzzle has hidden answers (all 'X's).")
             return
 
-        # Get current position
         r, c = self.cursor_row, self.cursor_col
         
         if self.direction == 'across':

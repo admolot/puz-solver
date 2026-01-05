@@ -1,3 +1,34 @@
+Here is Version 5.0 with the requested improvements.
+
+New Features in v5.0:
+
+Smart Navigation (Arrow Keys):
+
+Right Arrow: Now jumps over black squares automatically. If you press it enough times, it wraps to the next line/word (e.g., from 4-Across to 9-Across).
+
+Left Arrow: Jumps back over black squares and wraps to the previous line.
+
+Backspace: Moves back (skipping black squares) and deletes the letter there.
+
+Skip Filled Letters:
+
+Added a new option in the menu: "Skip Filled Squares".
+
+When enabled, typing a letter will automatically jump the cursor over any squares that are already filled, landing on the next empty one.
+
+Sidebar Focus Fix:
+
+Clicking a file in the sidebar now automatically returns focus to the crossword grid. You can immediately start typing or using arrow keys without clicking the grid again.
+
+The Code (v5.0)
+
+Copy this entire block and overwrite your file on GitHub.
+
+code
+Python
+download
+content_copy
+expand_less
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz
@@ -6,8 +37,8 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v4.0")
-        self.root.geometry("1200x750") # Slightly wider for the sidebar
+        self.root.title("Python .puz Solver - v5.0")
+        self.root.geometry("1200x750")
 
         # Game State
         self.puzzle = None
@@ -27,7 +58,8 @@ class CrosswordApp:
         
         # Settings Variables
         self.var_error_check = tk.BooleanVar(value=False)
-        self.var_ctrl_reveal = tk.BooleanVar(value=True) # Ctrl option is back
+        self.var_ctrl_reveal = tk.BooleanVar(value=True)
+        self.var_skip_filled = tk.BooleanVar(value=False) # New Option
         self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
         self.cell_size = 35 
         
@@ -57,6 +89,8 @@ class CrosswordApp:
                                      variable=self.var_error_check, command=self.refresh_grid)
         options_menu.add_checkbutton(label="Enable 'Ctrl' to Reveal Letter", onvalue=True, offvalue=False, 
                                      variable=self.var_ctrl_reveal)
+        options_menu.add_checkbutton(label="Skip Filled Squares", onvalue=True, offvalue=False, 
+                                     variable=self.var_skip_filled)
         options_menu.add_separator()
         options_menu.add_radiobutton(label="At end of word: Jump to Next", value="next", variable=self.var_end_behavior)
         options_menu.add_radiobutton(label="At end of word: Stay", value="stay", variable=self.var_end_behavior)
@@ -64,23 +98,21 @@ class CrosswordApp:
         menubar.add_cascade(label="Options", menu=options_menu)
         self.root.config(menu=menubar)
 
-        # Top Toolbar / Info Frame
+        # Top Toolbar
         top_frame = tk.Frame(self.root, pady=5, padx=5, bg="#f0f0f0")
         top_frame.pack(side=tk.TOP, fill=tk.X)
         
-        # Sidebar Toggle Button
         self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
         self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 10))
 
-        # Current Clue Display
         self.lbl_current_clue = tk.Label(top_frame, text="Open a file to begin", font=("Arial", 14, "bold"), wraplength=900, bg="#f0f0f0")
         self.lbl_current_clue.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-        # Main Content Area (Holds Sidebar, Grid, Clues)
+        # Main Content
         self.main_content = tk.Frame(self.root)
         self.main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
 
-        # 1. Sidebar (File Browser) - Hidden by default
+        # Sidebar
         self.sidebar_frame = tk.Frame(self.main_content, width=200, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1)
         self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
         self.sidebar_label.pack(fill=tk.X, pady=2)
@@ -89,12 +121,11 @@ class CrosswordApp:
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
 
-        # 2. Grid (Left/Center)
-        # Added padx=30 to give space between grid and clues
+        # Grid
         self.canvas = tk.Canvas(self.main_content, bg="white", highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
 
-        # 3. Clues Lists (Right)
+        # Clues
         right_panel = tk.Frame(self.main_content)
         right_panel.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
         
@@ -112,7 +143,6 @@ class CrosswordApp:
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
         self.root.bind("<Tab>", lambda e: self.jump_to_next_word())
-        # Restore Ctrl Key Bindings
         self.root.bind("<Control_L>", self.reveal_current_letter)
         self.root.bind("<Control_R>", self.reveal_current_letter)
 
@@ -129,7 +159,6 @@ class CrosswordApp:
             messagebox.showerror("Error", f"Failed to load file.\n\nDetails: {e}")
             return
 
-        # Refresh Sidebar with files in this folder
         self.update_sidebar(os.path.dirname(filename))
 
         self.width = self.puzzle.width
@@ -137,14 +166,12 @@ class CrosswordApp:
         
         self.solution_grid = list(self.puzzle.solution)
         
-        # Redaction Check
         self.is_redacted = False
         x_count = self.solution_grid.count('X') + self.solution_grid.count('x')
         total_cells = len(self.solution_grid) - self.solution_grid.count('.')
         
         if total_cells > 0 and (x_count / total_cells) > 0.8:
             self.is_redacted = True
-            # We silently disable error check, user can re-enable if they really want
             self.var_error_check.set(False)
 
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
@@ -163,7 +190,6 @@ class CrosswordApp:
         self.refresh_grid()
         self.update_clue_display()
         
-        # Show sidebar automatically on first load?
         if not self.sidebar_visible:
             self.toggle_sidebar()
 
@@ -174,8 +200,6 @@ class CrosswordApp:
             files.sort()
             for f in files:
                 self.file_listbox.insert(tk.END, f)
-                
-            # Highlight current file
             current_name = os.path.basename(self.current_file_path)
             try:
                 idx = files.index(current_name)
@@ -192,12 +216,9 @@ class CrosswordApp:
             self.sidebar_visible = False
             self.btn_sidebar.config(relief=tk.GROOVE, bg="#f0f0f0")
         else:
-            # Pack sidebar before everything else to be on the left
             self.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-            # Re-pack others to ensure order (Sidebar -> Grid -> Clues)
             self.canvas.pack_forget()
             self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
-            
             self.sidebar_visible = True
             self.btn_sidebar.config(relief=tk.SUNKEN, bg="#ccc")
 
@@ -210,6 +231,9 @@ class CrosswordApp:
         
         if full_path != self.current_file_path:
             self.load_puz_file(full_path)
+        
+        # FIX: Immediately return focus to canvas for keyboard nav
+        self.canvas.focus_set()
 
     def parse_clues(self):
         self.clue_mapping = self.puzzle.clue_numbering()
@@ -307,17 +331,15 @@ class CrosswordApp:
         
         key = event.keysym
         
-        # If Ctrl is held, block standard typing (to prevent glitches)
         if event.state & 0x0004:
             return "break"
-        
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 
         if key == "Left":
-            self.move_cursor(0, -1)
+            self.move_smart(0, -1)
         elif key == "Right":
-            self.move_cursor(0, 1)
+            self.move_smart(0, 1)
         elif key == "Up":
             self.move_cursor(-1, 0)
         elif key == "Down":
@@ -327,8 +349,9 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
+            # Backspace behavior: Move back smartly, then delete that cell
+            self.move_smart(0, -1)
             self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
-            self.move_cursor_back()
             self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
@@ -340,11 +363,48 @@ class CrosswordApp:
         
         return "break"
 
+    def move_smart(self, dr, dc):
+        """Move cursor skipping black squares and wrapping lines"""
+        r, c = self.cursor_row, self.cursor_col
+        
+        # Loop to find next white square
+        while True:
+            r += dr
+            c += dc
+            
+            # Wrap Horizontal
+            if c < 0:
+                r -= 1
+                c = self.width - 1
+            elif c >= self.width:
+                r += 1
+                c = 0
+            
+            # Wrap Vertical
+            if r < 0:
+                r = self.height - 1
+                c = self.width - 1
+            elif r >= self.height:
+                r = 0
+                c = 0
+            
+            # Check if white square
+            idx = self.get_index(c, r)
+            if self.solution_grid[idx] != '.':
+                self.cursor_row = r
+                self.cursor_col = c
+                self.refresh_grid()
+                self.update_clue_display()
+                return
+            
+            # If we looped all the way back (safety)
+            if r == self.cursor_row and c == self.cursor_col:
+                break
+
     def reveal_current_letter(self, event):
-        """Ctrl Key: Reveal current letter and move next"""
         if not self.puzzle: return
         if not self.var_ctrl_reveal.get(): return
-        if self.is_redacted: return # Don't fill X's
+        if self.is_redacted: return
 
         idx = self.get_index(self.cursor_col, self.cursor_row)
         correct_char = self.solution_grid[idx]
@@ -357,7 +417,6 @@ class CrosswordApp:
         return "break"
 
     def reveal_current_word(self):
-        """Reveal the entire current word"""
         if not self.puzzle: return
         if self.is_redacted:
             messagebox.showinfo("Cannot Reveal", "This puzzle has hidden answers (all 'X's).")
@@ -404,22 +463,40 @@ class CrosswordApp:
 
     def step_forward(self):
         dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
-        next_r, next_c = self.cursor_row + dr, self.cursor_col + dc
         
-        hit_block = False
-        if not (0 <= next_r < self.height and 0 <= next_c < self.width):
-            hit_block = True
-        elif self.solution_grid[self.get_index(next_c, next_r)] == '.':
-            hit_block = True
+        # We start from current position
+        r, c = self.cursor_row, self.cursor_col
+        
+        while True:
+            r += dr
+            c += dc
             
-        if hit_block:
-            if self.var_end_behavior.get() == "next":
-                self.jump_to_next_word()
-        else:
-            self.cursor_row = next_r
-            self.cursor_col = next_c
-            self.refresh_grid()
-            self.update_clue_display()
+            # 1. Check if we hit a wall or black square
+            hit_block = False
+            if not (0 <= r < self.height and 0 <= c < self.width):
+                hit_block = True
+            elif self.solution_grid[self.get_index(c, r)] == '.':
+                hit_block = True
+                
+            if hit_block:
+                if self.var_end_behavior.get() == "next":
+                    self.jump_to_next_word()
+                return # Stop if behavior is 'stay' or after jumping
+            
+            # 2. It's a valid white square. Should we skip it?
+            idx = self.get_index(c, r)
+            is_filled = self.user_grid[idx] not in ['-', '.']
+            
+            if self.var_skip_filled.get() and is_filled:
+                # Yes, skip this filled square and loop again
+                continue
+            else:
+                # Found our spot
+                self.cursor_row = r
+                self.cursor_col = c
+                self.refresh_grid()
+                self.update_clue_display()
+                return
 
     def jump_to_next_word(self):
         if not self.puzzle: return

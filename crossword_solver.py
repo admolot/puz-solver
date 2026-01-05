@@ -8,7 +8,7 @@ import html
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v7.0 (Dark Mode)")
+        self.root.title("Python .puz Solver - v7.1")
         self.root.geometry("1200x750")
 
         # Game State
@@ -32,12 +32,11 @@ class CrosswordApp:
         self.var_ctrl_reveal = tk.BooleanVar(value=True)
         self.var_skip_filled = tk.BooleanVar(value=True)
         self.var_end_behavior = tk.StringVar(value="next")
-        self.var_dark_theme = tk.BooleanVar(value=True) # Default ON
+        self.var_dark_theme = tk.BooleanVar(value=True)
         
         self.cell_size = 35 
         self.sidebar_visible = False
         
-        # Color Palette Placeholder
         self.c = {} 
 
         # --- UI Layout ---
@@ -165,15 +164,15 @@ class CrosswordApp:
                 'fg': '#e0e0e0',
                 'panel_bg': '#333333',
                 'input_bg': '#404040',
-                'grid_bg': '#3c3c3c',   # Square color
-                'grid_fg': '#ffffff',   # Letter color
-                'grid_num': '#aaaaaa',  # Number color
+                'grid_bg': '#3c3c3c',
+                'grid_fg': '#ffffff',
+                'grid_num': '#aaaaaa',
                 'black_sq': 'black',
                 'cursor': '#665c00',    # Dark Gold
                 'highlight': '#004d40', # Dark Teal
                 'error': '#ff5555',     # Bright Red
                 'sash': '#202020',
-                'completed': '#808080'  # Dimmed text
+                'completed': '#808080'
             }
         else:
             # LIGHT THEME
@@ -197,40 +196,32 @@ class CrosswordApp:
         self.define_colors()
         c = self.c
         
-        # Root & Main Containers
         self.root.config(bg=c['bg'])
         self.top_frame.config(bg=c['panel_bg'])
         self.main_paned.config(bg=c['sash'])
         self.game_paned.config(bg=c['sash'])
         
-        # Sidebar
         self.sidebar_frame.config(bg=c['input_bg'])
         self.sidebar_label.config(bg=c['input_bg'], fg=c['fg'])
         self.file_listbox.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], selectforeground=c['fg'])
         
-        # Labels
         labels = [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down]
         for lbl in labels:
             lbl.config(bg=c['panel_bg'], fg=c['fg'])
             
-        # Button
         self.btn_sidebar.config(bg=c['input_bg'], fg=c['fg'])
 
-        # Grid Area
         self.grid_frame.config(bg=c['bg'])
         self.canvas.config(bg=c['bg'])
         
-        # Clues Area
         self.clues_frame.config(bg=c['bg'])
         
-        # Text Widgets
         for txt in [self.txt_across, self.txt_down]:
             txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'])
             txt.tag_config("highlight", background=c['highlight'])
             txt.tag_config("completed", foreground=c['completed'])
             txt.tag_config("default", background=c['input_bg'], foreground=c['fg'])
             
-        # Refresh drawing
         self.refresh_grid()
         self.update_clue_display()
 
@@ -384,9 +375,7 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
-        # Use Dynamic Colors
         c = self.c 
-        
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
         fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="normal")
 
@@ -409,14 +398,11 @@ class CrosswordApp:
                 elif self.is_highlighted(c_idx, r):
                     bg_color = c['highlight']
                 
-                # Draw square
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
-                # Draw Number
                 if (c_idx, r) in self.grid_numbers:
                     self.canvas.create_text(x1+2, y1+1, anchor="nw", text=str(self.grid_numbers[(c_idx,r)]), font=fnt_num, fill=c['grid_num'])
 
-                # Draw Letter
                 if cell_val not in ['-', '.']:
                     text_color = c['grid_fg']
                     if self.var_error_check.get() and not self.is_redacted:
@@ -425,10 +411,11 @@ class CrosswordApp:
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
-        
         self.check_completed_clues()
 
     def check_completed_clues(self):
+        if not self.puzzle: return
+        
         def check_list(clue_list, direction):
             txt_widget = self.txt_across if direction == 'across' else self.txt_down
             for clue in clue_list:
@@ -698,6 +685,7 @@ class CrosswordApp:
             self.update_clue_display()
 
     def update_clue_display(self):
+        if not self.puzzle: return
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         start_idx = current_idx
         if self.direction == 'across':

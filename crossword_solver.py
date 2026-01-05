@@ -6,7 +6,7 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.3")
+        self.root.title("Python .puz Solver - v5.4")
         self.root.geometry("1200x750")
 
         # Game State
@@ -83,32 +83,35 @@ class CrosswordApp:
         self.lbl_current_clue = tk.Label(top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600, bg="#f8f9fa", fg="#000")
         self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=10)
 
-        # Main Content
-        self.main_content = tk.Frame(self.root)
-        self.main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
+        # --- Resizable Layout (PanedWindow) ---
+        self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
+        self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Sidebar (Hidden by default)
-        self.sidebar_frame = tk.Frame(self.main_content, width=200, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1)
+        # 1. Sidebar Frame (Content)
+        self.sidebar_frame = tk.Frame(self.main_paned, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1, width=200)
         self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
         self.sidebar_label.pack(fill=tk.X, pady=2)
         
         self.file_listbox = tk.Listbox(self.sidebar_frame, font=("Arial", 9), bg="white")
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
+        
+        # 2. Game Area Splitter (Grid vs Clues)
+        self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
+        
+        # Grid Container (to center or scroll if needed)
+        self.grid_frame = tk.Frame(self.game_paned, bg="white")
+        self.canvas = tk.Canvas(self.grid_frame, bg="white", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Grid
-        self.canvas = tk.Canvas(self.main_content, bg="white", highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 20))
-
-        # Clues Panel (Using Text widgets for Wrapping)
-        right_panel = tk.Frame(self.main_content)
-        right_panel.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
+        # Clues Panel
+        self.clues_frame = tk.Frame(self.game_paned)
         
         # Across Pane
-        lbl_across = tk.Label(right_panel, text="Across", font=("Helvetica", 12, "bold"))
+        lbl_across = tk.Label(self.clues_frame, text="Across", font=("Helvetica", 12, "bold"))
         lbl_across.pack(side=tk.TOP, anchor="w")
         
-        frame_across = tk.Frame(right_panel)
+        frame_across = tk.Frame(self.clues_frame)
         frame_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=(0, 10))
         
         sb_across = tk.Scrollbar(frame_across)
@@ -120,10 +123,10 @@ class CrosswordApp:
         sb_across.config(command=self.txt_across.yview)
 
         # Down Pane
-        lbl_down = tk.Label(right_panel, text="Down", font=("Helvetica", 12, "bold"))
+        lbl_down = tk.Label(self.clues_frame, text="Down", font=("Helvetica", 12, "bold"))
         lbl_down.pack(side=tk.TOP, anchor="w")
         
-        frame_down = tk.Frame(right_panel)
+        frame_down = tk.Frame(self.clues_frame)
         frame_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
         
         sb_down = tk.Scrollbar(frame_down)
@@ -134,10 +137,16 @@ class CrosswordApp:
         self.txt_down.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_down.config(command=self.txt_down.yview)
 
-        # Config Tags for Highlighting
+        # Config Tags
         for txt in [self.txt_across, self.txt_down]:
             txt.tag_config("highlight", background="#E1F5FE") 
             txt.tag_config("default", background="white")
+
+        # Initial Layout Assembly
+        # We start with Sidebar Hidden, so we only add game_paned to main_paned
+        self.main_paned.add(self.game_paned)
+        self.game_paned.add(self.grid_frame, minsize=400)
+        self.game_paned.add(self.clues_frame, minsize=200)
 
         # Bindings
         self.canvas.bind("<Button-1>", self.on_click)
@@ -215,13 +224,11 @@ class CrosswordApp:
 
     def toggle_sidebar(self):
         if self.sidebar_visible:
-            self.sidebar_frame.pack_forget()
+            self.main_paned.remove(self.sidebar_frame)
             self.sidebar_visible = False
             self.btn_sidebar.config(relief=tk.GROOVE, bg="#e9ecef")
         else:
-            self.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-            self.canvas.pack_forget()
-            self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 20))
+            self.main_paned.add(self.sidebar_frame, before=self.game_paned, width=200)
             self.sidebar_visible = True
             self.btn_sidebar.config(relief=tk.SUNKEN, bg="#ccc")
 
@@ -372,9 +379,7 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
-            # 1. Clear current cell
             self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
-            # 2. Move back based on direction
             if self.direction == 'across':
                 self.move_smart(0, -1)
             else:
@@ -486,6 +491,8 @@ class CrosswordApp:
 
     def jump_to_next_word(self):
         if not self.puzzle: return
+        
+        # 1. Find Start of Next Word
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         start_idx = current_idx
         if self.direction == 'across':
@@ -522,11 +529,20 @@ class CrosswordApp:
                 if len(current_list) > 0:
                     next_clue = current_list[0]
 
+        # 2. Execute Move
         if next_clue:
             self.cursor_row = next_clue['cell'] // self.width
             self.cursor_col = next_clue['cell'] % self.width
             self.refresh_grid()
             self.update_clue_display()
+            
+            # 3. Check "Skip Filled" Logic immediately after jumping
+            if self.var_skip_filled.get():
+                # Check current cell (which is the start of the new word)
+                idx = self.get_index(self.cursor_col, self.cursor_row)
+                if self.user_grid[idx] not in ['-', '.']:
+                    # It's filled, so trigger step_forward to slide to the first empty
+                    self.step_forward()
             
     def on_click(self, event):
         if not self.puzzle: return

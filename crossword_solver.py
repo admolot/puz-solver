@@ -6,7 +6,7 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.1")
+        self.root.title("Python .puz Solver - v5.2")
         self.root.geometry("1200x750")
 
         # Game State
@@ -68,20 +68,26 @@ class CrosswordApp:
         self.root.config(menu=menubar)
 
         # Top Toolbar
-        top_frame = tk.Frame(self.root, pady=5, padx=5, bg="#f0f0f0")
+        top_frame = tk.Frame(self.root, pady=8, padx=10, bg="#f8f9fa", relief=tk.RIDGE, borderwidth=1)
         top_frame.pack(side=tk.TOP, fill=tk.X)
         
-        self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
-        self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 10))
+        # Sidebar Button
+        self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE, bg="#e9ecef")
+        self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 15))
 
-        self.lbl_current_clue = tk.Label(top_frame, text="Open a file to begin", font=("Arial", 14, "bold"), wraplength=900, bg="#f0f0f0")
-        self.lbl_current_clue.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # NEW: Filename Label
+        self.lbl_filename = tk.Label(top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"), fg="#555", bg="#f8f9fa")
+        self.lbl_filename.pack(side=tk.LEFT)
+
+        # Current Clue Display (Right aligned roughly)
+        self.lbl_current_clue = tk.Label(top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600, bg="#f8f9fa", fg="#000")
+        self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=10)
 
         # Main Content
         self.main_content = tk.Frame(self.root)
         self.main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
 
-        # Sidebar
+        # Sidebar (Hidden by default)
         self.sidebar_frame = tk.Frame(self.main_content, width=200, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1)
         self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
         self.sidebar_label.pack(fill=tk.X, pady=2)
@@ -92,21 +98,48 @@ class CrosswordApp:
 
         # Grid
         self.canvas = tk.Canvas(self.main_content, bg="white", highlightthickness=0)
-        self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
+        self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 20))
 
-        # Clues
+        # Clues Panel (Using Text widgets for Wrapping)
         right_panel = tk.Frame(self.main_content)
         right_panel.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
         
-        lbl_across = tk.Label(right_panel, text="Across", font=("Arial", 12, "bold"))
+        # Across Pane
+        lbl_across = tk.Label(right_panel, text="Across", font=("Helvetica", 12, "bold"))
         lbl_across.pack(side=tk.TOP, anchor="w")
-        self.list_across = tk.Listbox(right_panel, font=("Arial", 10), exportselection=False)
-        self.list_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        
+        frame_across = tk.Frame(right_panel)
+        frame_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=(0, 10))
+        
+        # Scrollbar Across
+        sb_across = tk.Scrollbar(frame_across)
+        sb_across.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.txt_across = tk.Text(frame_across, wrap=tk.WORD, font=("Arial", 10), 
+                                  state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_across.set, height=10)
+        self.txt_across.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+        sb_across.config(command=self.txt_across.yview)
 
-        lbl_down = tk.Label(right_panel, text="Down", font=("Arial", 12, "bold"))
+        # Down Pane
+        lbl_down = tk.Label(right_panel, text="Down", font=("Helvetica", 12, "bold"))
         lbl_down.pack(side=tk.TOP, anchor="w")
-        self.list_down = tk.Listbox(right_panel, font=("Arial", 10), exportselection=False)
-        self.list_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        
+        frame_down = tk.Frame(right_panel)
+        frame_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
+        
+        # Scrollbar Down
+        sb_down = tk.Scrollbar(frame_down)
+        sb_down.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.txt_down = tk.Text(frame_down, wrap=tk.WORD, font=("Arial", 10), 
+                                state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_down.set, height=10)
+        self.txt_down.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
+        sb_down.config(command=self.txt_down.yview)
+
+        # Config Tags for Highlighting
+        for txt in [self.txt_across, self.txt_down]:
+            txt.tag_config("highlight", background="#E1F5FE") # Light Blue
+            txt.tag_config("default", background="white")
 
         # Bindings
         self.canvas.bind("<Button-1>", self.on_click)
@@ -127,6 +160,10 @@ class CrosswordApp:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file.\n\nDetails: {e}")
             return
+
+        # Update Filename Label
+        base_name = os.path.basename(filename)
+        self.lbl_filename.config(text=base_name)
 
         self.update_sidebar(os.path.dirname(filename))
 
@@ -183,11 +220,11 @@ class CrosswordApp:
         if self.sidebar_visible:
             self.sidebar_frame.pack_forget()
             self.sidebar_visible = False
-            self.btn_sidebar.config(relief=tk.GROOVE, bg="#f0f0f0")
+            self.btn_sidebar.config(relief=tk.GROOVE, bg="#e9ecef")
         else:
             self.sidebar_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
             self.canvas.pack_forget()
-            self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 30))
+            self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH, padx=(0, 20))
             self.sidebar_visible = True
             self.btn_sidebar.config(relief=tk.SUNKEN, bg="#ccc")
 
@@ -205,22 +242,50 @@ class CrosswordApp:
 
     def parse_clues(self):
         self.clue_mapping = self.puzzle.clue_numbering()
-        
         self.grid_numbers = {}
-        self.list_across.delete(0, tk.END)
-        self.list_down.delete(0, tk.END)
 
+        # Fill Across Text
+        self.txt_across.config(state=tk.NORMAL)
+        self.txt_across.delete(1.0, tk.END)
         for clue in self.clue_mapping.across:
-            self.list_across.insert(tk.END, f"{clue['num']}. {clue['clue']}")
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
             
+            # Insert with tag
+            tag = f"across_{clue['num']}"
+            self.txt_across.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
+            
+            # Make clickable
+            self.txt_across.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'across'))
+
+        self.txt_across.config(state=tk.DISABLED)
+
+        # Fill Down Text
+        self.txt_down.config(state=tk.NORMAL)
+        self.txt_down.delete(1.0, tk.END)
         for clue in self.clue_mapping.down:
-            self.list_down.insert(tk.END, f"{clue['num']}. {clue['clue']}")
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
+            
+            tag = f"down_{clue['num']}"
+            self.txt_down.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
+            self.txt_down.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'down'))
+
+        self.txt_down.config(state=tk.DISABLED)
+
+    def click_clue_text(self, num, direction):
+        # Find cell for this clue number
+        target_list = self.clue_mapping.across if direction == 'across' else self.clue_mapping.down
+        for clue in target_list:
+            if clue['num'] == num:
+                self.cursor_row = clue['cell'] // self.width
+                self.cursor_col = clue['cell'] % self.width
+                self.direction = direction
+                self.refresh_grid()
+                self.update_clue_display()
+                return
 
     def find_first_valid_cell(self):
         for i, char in enumerate(self.solution_grid):
@@ -236,12 +301,10 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
-        # --- VISUAL TWEAKS ---
-        # Numbers: Smaller (0.28) and standard weight
+        # --- VISUALS ---
+        # Fonts matching the style request
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
-        
-        # Letters: Helvetica (Cleaner), Larger (0.65), Bold
-        fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.65), weight="bold")
+        fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="bold")
 
         for r in range(self.height):
             for c in range(self.width):
@@ -265,7 +328,6 @@ class CrosswordApp:
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
                 if (c, r) in self.grid_numbers:
-                    # Number tucked in top-left
                     self.canvas.create_text(x1+2, y1+1, anchor="nw", text=str(self.grid_numbers[(c,r)]), font=fnt_num, fill="#222222")
 
                 if cell_val not in ['-', '.']:
@@ -274,7 +336,7 @@ class CrosswordApp:
                         if cell_val != sol_val:
                             text_color = "red"
                     
-                    # Letter centered, slightly shifted down (+2) to clear number
+                    # Centered letters
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
 
@@ -302,13 +364,10 @@ class CrosswordApp:
 
     def handle_keypress(self, event):
         if not self.puzzle: return
-        
         key = event.keysym
         
-        if event.state & 0x0004:
-            return "break"
-        if "Control" in key or "Alt" in key or "Shift" in key:
-            return
+        if event.state & 0x0004: return "break"
+        if "Control" in key or "Alt" in key or "Shift" in key: return
 
         if key == "Left":
             self.move_smart(0, -1)
@@ -323,13 +382,18 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
-            self.move_smart(0, -1)
+            # --- FIXED BACKSPACE LOGIC ---
+            # 1. Clear current cell
             self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
+            # 2. Move back based on direction
+            if self.direction == 'across':
+                self.move_smart(0, -1) # Move Left
+            else:
+                self.move_smart(-1, 0) # Move Up
             self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            
             self.user_grid[idx] = char
             self.refresh_grid()
             self.step_forward()
@@ -371,9 +435,7 @@ class CrosswordApp:
 
         idx = self.get_index(self.cursor_col, self.cursor_row)
         correct_char = self.solution_grid[idx]
-        
         if correct_char == '.': return
-        
         self.user_grid[idx] = correct_char
         self.refresh_grid()
         self.step_forward()
@@ -382,41 +444,29 @@ class CrosswordApp:
     def reveal_current_word(self):
         if not self.puzzle: return
         if self.is_redacted:
-            messagebox.showinfo("Cannot Reveal", "This puzzle has hidden answers (all 'X's).")
+            messagebox.showinfo("Cannot Reveal", "Hidden answers.")
             return
-
         r, c = self.cursor_row, self.cursor_col
         
         if self.direction == 'across':
             start_c = c
-            while start_c > 0 and self.solution_grid[self.get_index(start_c-1, r)] != '.':
-                start_c -= 1
+            while start_c > 0 and self.solution_grid[self.get_index(start_c-1, r)] != '.': start_c -= 1
             end_c = c
-            while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, r)] != '.':
-                end_c += 1
-            
+            while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, r)] != '.': end_c += 1
             for col in range(start_c, end_c + 1):
-                idx = self.get_index(col, r)
-                self.user_grid[idx] = self.solution_grid[idx]
-                
+                self.user_grid[self.get_index(col, r)] = self.solution_grid[self.get_index(col, r)]
         else: # Down
             start_r = r
-            while start_r > 0 and self.solution_grid[self.get_index(c, start_r-1)] != '.':
-                start_r -= 1
+            while start_r > 0 and self.solution_grid[self.get_index(c, start_r-1)] != '.': start_r -= 1
             end_r = r
-            while end_r < self.height - 1 and self.solution_grid[self.get_index(c, end_r+1)] != '.':
-                end_r += 1
-            
+            while end_r < self.height - 1 and self.solution_grid[self.get_index(c, end_r+1)] != '.': end_r += 1
             for row in range(start_r, end_r + 1):
-                idx = self.get_index(c, row)
-                self.user_grid[idx] = self.solution_grid[idx]
-
+                self.user_grid[self.get_index(c, row)] = self.solution_grid[self.get_index(c, row)]
         self.refresh_grid()
 
     def move_cursor(self, dr, dc):
         new_r = self.cursor_row + dr
         new_c = self.cursor_col + dc
-        
         if 0 <= new_r < self.height and 0 <= new_c < self.width:
             if self.solution_grid[self.get_index(new_c, new_r)] != '.':
                 self.cursor_row = new_r
@@ -427,26 +477,17 @@ class CrosswordApp:
     def step_forward(self):
         dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
         r, c = self.cursor_row, self.cursor_col
-        
         while True:
             r += dr
             c += dc
             hit_block = False
-            if not (0 <= r < self.height and 0 <= c < self.width):
-                hit_block = True
-            elif self.solution_grid[self.get_index(c, r)] == '.':
-                hit_block = True
-                
+            if not (0 <= r < self.height and 0 <= c < self.width): hit_block = True
+            elif self.solution_grid[self.get_index(c, r)] == '.': hit_block = True
             if hit_block:
-                if self.var_end_behavior.get() == "next":
-                    self.jump_to_next_word()
+                if self.var_end_behavior.get() == "next": self.jump_to_next_word()
                 return
-            
             idx = self.get_index(c, r)
-            is_filled = self.user_grid[idx] not in ['-', '.']
-            
-            if self.var_skip_filled.get() and is_filled:
-                continue
+            if self.var_skip_filled.get() and self.user_grid[idx] not in ['-', '.']: continue
             else:
                 self.cursor_row = r
                 self.cursor_col = c
@@ -456,9 +497,7 @@ class CrosswordApp:
 
     def jump_to_next_word(self):
         if not self.puzzle: return
-        
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
-        
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -500,38 +539,9 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
 
-    def move_cursor_back(self):
-        dr, dc = (0, -1) if self.direction == 'across' else (-1, 0)
-        new_r, new_c = self.cursor_row + dr, self.cursor_col + dc
-        
-        if 0 <= new_r < self.height and 0 <= new_c < self.width:
-            if self.solution_grid[self.get_index(new_c, new_r)] != '.':
-                self.cursor_row = new_r
-                self.cursor_col = new_c
-                self.refresh_grid()
-                self.update_clue_display()
-
-    def on_click(self, event):
-        if not self.puzzle: return
-        c = event.x // self.cell_size
-        r = event.y // self.cell_size
-        
-        if 0 <= c < self.width and 0 <= r < self.height:
-            if self.solution_grid[self.get_index(c, r)] == '.':
-                return
-            
-            if c == self.cursor_col and r == self.cursor_row:
-                self.direction = 'down' if self.direction == 'across' else 'across'
-            else:
-                self.cursor_col = c
-                self.cursor_row = r
-                
-            self.refresh_grid()
-            self.update_clue_display()
-
     def update_clue_display(self):
+        # 1. Determine clue
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
-        
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -543,12 +553,10 @@ class CrosswordApp:
             while r >= 0 and self.solution_grid[self.get_index(self.cursor_col, r)] != '.':
                 start_idx = self.get_index(self.cursor_col, r)
                 r -= 1
-                
-        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
         
+        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
         found_clue = ""
         clue_num = -1
-        
         for clue in target_list:
             if clue['cell'] == start_idx:
                 found_clue = f"{clue['num']}. {clue['clue']}"
@@ -556,17 +564,25 @@ class CrosswordApp:
                 break
         
         self.lbl_current_clue.config(text=found_clue)
-        self.highlight_listbox(self.list_across, clue_num, self.direction == 'across')
-        self.highlight_listbox(self.list_down, clue_num, self.direction == 'down')
+        
+        # 2. Highlight in Text Widgets
+        self.highlight_text_widget(self.txt_across, clue_num, self.direction == 'across')
+        self.highlight_text_widget(self.txt_down, clue_num, self.direction == 'down')
 
-    def highlight_listbox(self, listbox, clue_num, is_active_direction):
-        listbox.selection_clear(0, tk.END)
-        if not is_active_direction: return
-        for i, item in enumerate(listbox.get(0, tk.END)):
-            if item.startswith(f"{clue_num}."):
-                listbox.selection_set(i)
-                listbox.see(i)
-                break
+    def highlight_text_widget(self, txt_widget, clue_num, is_active_direction):
+        # Clear previous highlights
+        txt_widget.tag_remove("highlight", "1.0", tk.END)
+        
+        if not is_active_direction or clue_num == -1: return
+
+        # Apply new highlight
+        tag_name = f"across_{clue_num}" if self.direction == 'across' else f"down_{clue_num}"
+        
+        # We need to find the range of this tag
+        ranges = txt_widget.tag_ranges(tag_name)
+        if ranges:
+            txt_widget.tag_add("highlight", ranges[0], ranges[1])
+            txt_widget.see(ranges[0])
 
 if __name__ == "__main__":
     root = tk.Tk()

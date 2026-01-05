@@ -162,13 +162,13 @@ class CrosswordApp:
             # DARK THEME (NYT Style)
             self.c = {
                 'bg': '#333333',          # Very dark background
-                'fg': '#569fc9',          # Off-white text
+                'fg': 'white',          # Off-white text
                 'panel_bg': '#333333',    # Dark panels
                 'input_bg': '#333333',    # Matching text areas
                 'grid_bg': '#757575',     # Medium Gray squares (Empty)
                 'grid_fg': '#FFFFFF',     # White letters
                 'grid_num': '#E0E0E0',    # Light numbers
-                'black_sq': 'black',      # Black squares
+                'black_sq': '#333333',      # Black squares
                 'cursor': '#d19e44',      # Muted Gold (Active Square)
                 'highlight': '#569fc9',   # Slate Blue (Word Highlight)
                 'error': '#FF5555',       # Bright Red

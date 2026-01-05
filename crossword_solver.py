@@ -8,7 +8,7 @@ import html
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v7.1")
+        self.root.title("Python .puz Solver - v8.0")
         self.root.geometry("1200x750")
 
         # Game State
@@ -78,6 +78,7 @@ class CrosswordApp:
         self.top_frame = tk.Frame(self.root, pady=8, padx=10, relief=tk.RIDGE, borderwidth=1)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
         
+        # Sidebar Button
         self.btn_sidebar = tk.Button(self.top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
         self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 15))
 
@@ -158,21 +159,21 @@ class CrosswordApp:
 
     def define_colors(self):
         if self.var_dark_theme.get():
-            # DARK THEME
+            # DARK THEME (NYT Style)
             self.c = {
-                'bg': '#2b2b2b',
-                'fg': '#e0e0e0',
-                'panel_bg': '#333333',
-                'input_bg': '#404040',
-                'grid_bg': '#3c3c3c',
-                'grid_fg': '#ffffff',
-                'grid_num': '#aaaaaa',
-                'black_sq': 'black',
-                'cursor': '#665c00',    # Dark Gold
-                'highlight': '#004d40', # Dark Teal
-                'error': '#ff5555',     # Bright Red
-                'sash': '#202020',
-                'completed': '#808080'
+                'bg': '#121212',          # Very dark background
+                'fg': '#E0E0E0',          # Off-white text
+                'panel_bg': '#1A1A1A',    # Dark panels
+                'input_bg': '#1A1A1A',    # Matching text areas
+                'grid_bg': '#757575',     # Medium Gray squares (Empty)
+                'grid_fg': '#FFFFFF',     # White letters
+                'grid_num': '#E0E0E0',    # Light numbers
+                'black_sq': 'black',      # Black squares
+                'cursor': '#C3AD43',      # Muted Gold (Active Square)
+                'highlight': '#355E75',   # Slate Blue (Word Highlight)
+                'error': '#FF5555',       # Bright Red
+                'sash': '#444444',        # Separators
+                'completed': '#888888'    # Dimmed text
             }
         else:
             # LIGHT THEME
@@ -411,6 +412,7 @@ class CrosswordApp:
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
+        
         self.check_completed_clues()
 
     def check_completed_clues(self):

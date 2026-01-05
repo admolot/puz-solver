@@ -5,7 +5,7 @@ import puz
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v3.1")
+        self.root.title("Python .puz Solver - v3.2")
         self.root.geometry("1000x700")
 
         # Game State
@@ -38,6 +38,11 @@ class CrosswordApp:
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
+        
+        # Reveal Menu (NEW)
+        reveal_menu = tk.Menu(menubar, tearoff=0)
+        reveal_menu.add_command(label="Reveal Current Word", command=self.reveal_current_word)
+        menubar.add_cascade(label="Reveal", menu=reveal_menu)
         
         # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
@@ -236,10 +241,49 @@ class CrosswordApp:
             self.user_grid[idx] = char
             self.refresh_grid()
 
-            # ALWAYS move forward, regardless of error check mode
+            # ALWAYS move forward
             self.step_forward()
         
         return "break"
+
+    def reveal_current_word(self):
+        """Reveal the entire current word (Across or Down)"""
+        if not self.puzzle: return
+
+        # Get current position
+        r, c = self.cursor_row, self.cursor_col
+        
+        if self.direction == 'across':
+            # Scan left to find start
+            start_c = c
+            while start_c > 0 and self.solution_grid[self.get_index(start_c-1, r)] != '.':
+                start_c -= 1
+            # Scan right to find end
+            end_c = c
+            while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, r)] != '.':
+                end_c += 1
+            
+            # Fill Letters
+            for col in range(start_c, end_c + 1):
+                idx = self.get_index(col, r)
+                self.user_grid[idx] = self.solution_grid[idx]
+                
+        else: # Down
+            # Scan up to find start
+            start_r = r
+            while start_r > 0 and self.solution_grid[self.get_index(c, start_r-1)] != '.':
+                start_r -= 1
+            # Scan down to find end
+            end_r = r
+            while end_r < self.height - 1 and self.solution_grid[self.get_index(c, end_r+1)] != '.':
+                end_r += 1
+            
+            # Fill Letters
+            for row in range(start_r, end_r + 1):
+                idx = self.get_index(c, row)
+                self.user_grid[idx] = self.solution_grid[idx]
+
+        self.refresh_grid()
 
     def move_cursor(self, dr, dc):
         new_r = self.cursor_row + dr
@@ -274,10 +318,8 @@ class CrosswordApp:
     def jump_to_next_word(self):
         if not self.puzzle: return
         
-        # 1. Determine Current Context
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         
-        # Find start of current word to match clue mapping
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -296,30 +338,23 @@ class CrosswordApp:
             next_list = self.clue_mapping.across
             next_direction = 'across'
 
-        # 2. Find Index of Current Clue in the List
         current_clue_index = -1
         for i, clue in enumerate(current_list):
             if clue['cell'] == start_idx:
                 current_clue_index = i
                 break
         
-        # 3. Determine Next Clue (with list switching)
         next_clue = None
-        
         if current_clue_index != -1 and current_clue_index < len(current_list) - 1:
-            # Just go to next clue in same list
             next_clue = current_list[current_clue_index + 1]
         else:
-            # We are at the end of the current list (or lost), switch lists!
             if len(next_list) > 0:
                 next_clue = next_list[0]
-                self.direction = next_direction # Switch direction!
+                self.direction = next_direction 
             else:
-                # Fallback: loop back to start of current list
                 if len(current_list) > 0:
                     next_clue = current_list[0]
 
-        # 4. Execute Move
         if next_clue:
             self.cursor_row = next_clue['cell'] // self.width
             self.cursor_col = next_clue['cell'] % self.width

@@ -8,7 +8,7 @@ import html
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v6.0")
+        self.root.title("Python .puz Solver - v7.0 (Dark Mode)")
         self.root.geometry("1200x750")
 
         # Game State
@@ -27,15 +27,18 @@ class CrosswordApp:
         self.cursor_row = 0
         self.direction = 'across'
         
-        # Settings Variables (Defaults CHANGED to True)
-        self.var_error_check = tk.BooleanVar(value=True)  # Default ON
-        self.var_ctrl_reveal = tk.BooleanVar(value=True)  # Default ON
-        self.var_skip_filled = tk.BooleanVar(value=True)  # Default ON
-        self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
-        self.cell_size = 35 
+        # Settings Variables
+        self.var_error_check = tk.BooleanVar(value=True)
+        self.var_ctrl_reveal = tk.BooleanVar(value=True)
+        self.var_skip_filled = tk.BooleanVar(value=True)
+        self.var_end_behavior = tk.StringVar(value="next")
+        self.var_dark_theme = tk.BooleanVar(value=True) # Default ON
         
-        # UI State
+        self.cell_size = 35 
         self.sidebar_visible = False
+        
+        # Color Palette Placeholder
+        self.c = {} 
 
         # --- UI Layout ---
         
@@ -56,6 +59,9 @@ class CrosswordApp:
         
         # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
+        options_menu.add_checkbutton(label="Dark Theme", onvalue=True, offvalue=False,
+                                     variable=self.var_dark_theme, command=self.apply_theme)
+        options_menu.add_separator()
         options_menu.add_checkbutton(label="Error Check Mode", onvalue=True, offvalue=False, 
                                      variable=self.var_error_check, command=self.refresh_grid)
         options_menu.add_checkbutton(label="Enable 'Ctrl' to Reveal Letter", onvalue=True, offvalue=False, 
@@ -70,48 +76,45 @@ class CrosswordApp:
         self.root.config(menu=menubar)
 
         # Top Toolbar
-        top_frame = tk.Frame(self.root, pady=8, padx=10, bg="#f8f9fa", relief=tk.RIDGE, borderwidth=1)
-        top_frame.pack(side=tk.TOP, fill=tk.X)
+        self.top_frame = tk.Frame(self.root, pady=8, padx=10, relief=tk.RIDGE, borderwidth=1)
+        self.top_frame.pack(side=tk.TOP, fill=tk.X)
         
-        # Sidebar Button
-        self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE, bg="#e9ecef")
+        self.btn_sidebar = tk.Button(self.top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
         self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 15))
 
-        # Filename Label
-        self.lbl_filename = tk.Label(top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"), fg="#555", bg="#f8f9fa")
+        self.lbl_filename = tk.Label(self.top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"))
         self.lbl_filename.pack(side=tk.LEFT)
 
-        # Current Clue Display
-        self.lbl_current_clue = tk.Label(top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600, bg="#f8f9fa", fg="#000")
+        self.lbl_current_clue = tk.Label(self.top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600)
         self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=10)
 
-        # --- Resizable Layout (PanedWindow) ---
-        self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
+        # Resizable Layout
+        self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6)
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 1. Sidebar Frame
-        self.sidebar_frame = tk.Frame(self.main_paned, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1, width=200)
-        self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
+        # Sidebar
+        self.sidebar_frame = tk.Frame(self.main_paned, relief=tk.SUNKEN, borderwidth=1, width=200)
+        self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", font=("Arial", 9, "bold"))
         self.sidebar_label.pack(fill=tk.X, pady=2)
         
-        self.file_listbox = tk.Listbox(self.sidebar_frame, font=("Arial", 9), bg="white")
+        self.file_listbox = tk.Listbox(self.sidebar_frame, font=("Arial", 9), borderwidth=0)
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
         
-        # 2. Game Area Splitter
-        self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
+        # Game Area
+        self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6)
         
-        # Grid Container
-        self.grid_frame = tk.Frame(self.game_paned, bg="white")
-        self.canvas = tk.Canvas(self.grid_frame, bg="white", highlightthickness=0)
+        # Grid
+        self.grid_frame = tk.Frame(self.game_paned)
+        self.canvas = tk.Canvas(self.grid_frame, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Clues Panel
+        # Clues
         self.clues_frame = tk.Frame(self.game_paned)
         
-        # Across Pane
-        lbl_across = tk.Label(self.clues_frame, text="Across", font=("Helvetica", 12, "bold"))
-        lbl_across.pack(side=tk.TOP, anchor="w")
+        # Across
+        self.lbl_across = tk.Label(self.clues_frame, text="Across", font=("Helvetica", 12, "bold"))
+        self.lbl_across.pack(side=tk.TOP, anchor="w")
         
         frame_across = tk.Frame(self.clues_frame)
         frame_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=(0, 10))
@@ -124,9 +127,9 @@ class CrosswordApp:
         self.txt_across.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_across.config(command=self.txt_across.yview)
 
-        # Down Pane
-        lbl_down = tk.Label(self.clues_frame, text="Down", font=("Helvetica", 12, "bold"))
-        lbl_down.pack(side=tk.TOP, anchor="w")
+        # Down
+        self.lbl_down = tk.Label(self.clues_frame, text="Down", font=("Helvetica", 12, "bold"))
+        self.lbl_down.pack(side=tk.TOP, anchor="w")
         
         frame_down = tk.Frame(self.clues_frame)
         frame_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
@@ -139,13 +142,7 @@ class CrosswordApp:
         self.txt_down.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_down.config(command=self.txt_down.yview)
 
-        # Config Tags
-        for txt in [self.txt_across, self.txt_down]:
-            txt.tag_config("highlight", background="#E1F5FE") 
-            txt.tag_config("completed", foreground="#999999") # Gray for filled
-            txt.tag_config("default", background="white", foreground="black")
-
-        # Initial Layout
+        # Layout Assembly
         self.main_paned.add(self.game_paned)
         self.game_paned.add(self.grid_frame, minsize=400)
         self.game_paned.add(self.clues_frame, minsize=200)
@@ -157,12 +154,89 @@ class CrosswordApp:
         self.root.bind("<Control_L>", self.reveal_current_letter)
         self.root.bind("<Control_R>", self.reveal_current_letter)
 
+        # Apply Theme Immediately
+        self.apply_theme()
+
+    def define_colors(self):
+        if self.var_dark_theme.get():
+            # DARK THEME
+            self.c = {
+                'bg': '#2b2b2b',
+                'fg': '#e0e0e0',
+                'panel_bg': '#333333',
+                'input_bg': '#404040',
+                'grid_bg': '#3c3c3c',   # Square color
+                'grid_fg': '#ffffff',   # Letter color
+                'grid_num': '#aaaaaa',  # Number color
+                'black_sq': 'black',
+                'cursor': '#665c00',    # Dark Gold
+                'highlight': '#004d40', # Dark Teal
+                'error': '#ff5555',     # Bright Red
+                'sash': '#202020',
+                'completed': '#808080'  # Dimmed text
+            }
+        else:
+            # LIGHT THEME
+            self.c = {
+                'bg': 'white',
+                'fg': 'black',
+                'panel_bg': '#f8f9fa',
+                'input_bg': 'white',
+                'grid_bg': 'white',
+                'grid_fg': 'black',
+                'grid_num': '#222222',
+                'black_sq': 'black',
+                'cursor': '#FFEB3B',    # Yellow
+                'highlight': '#E1F5FE', # Light Blue
+                'error': 'red',
+                'sash': '#cccccc',
+                'completed': '#999999'
+            }
+
+    def apply_theme(self):
+        self.define_colors()
+        c = self.c
+        
+        # Root & Main Containers
+        self.root.config(bg=c['bg'])
+        self.top_frame.config(bg=c['panel_bg'])
+        self.main_paned.config(bg=c['sash'])
+        self.game_paned.config(bg=c['sash'])
+        
+        # Sidebar
+        self.sidebar_frame.config(bg=c['input_bg'])
+        self.sidebar_label.config(bg=c['input_bg'], fg=c['fg'])
+        self.file_listbox.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], selectforeground=c['fg'])
+        
+        # Labels
+        labels = [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down]
+        for lbl in labels:
+            lbl.config(bg=c['panel_bg'], fg=c['fg'])
+            
+        # Button
+        self.btn_sidebar.config(bg=c['input_bg'], fg=c['fg'])
+
+        # Grid Area
+        self.grid_frame.config(bg=c['bg'])
+        self.canvas.config(bg=c['bg'])
+        
+        # Clues Area
+        self.clues_frame.config(bg=c['bg'])
+        
+        # Text Widgets
+        for txt in [self.txt_across, self.txt_down]:
+            txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'])
+            txt.tag_config("highlight", background=c['highlight'])
+            txt.tag_config("completed", foreground=c['completed'])
+            txt.tag_config("default", background=c['input_bg'], foreground=c['fg'])
+            
+        # Refresh drawing
+        self.refresh_grid()
+        self.update_clue_display()
+
     def clean_clue_text(self, text):
-        """Remove HTML tags and decode entities"""
         if not text: return ""
-        # Remove tags like <i>, <b>, </i>
         text = re.sub(r'<[^>]+>', '', text)
-        # Decode entities like &quot;
         text = html.unescape(text)
         return text
 
@@ -237,11 +311,11 @@ class CrosswordApp:
         if self.sidebar_visible:
             self.main_paned.remove(self.sidebar_frame)
             self.sidebar_visible = False
-            self.btn_sidebar.config(relief=tk.GROOVE, bg="#e9ecef")
+            self.btn_sidebar.config(relief=tk.GROOVE)
         else:
             self.main_paned.add(self.sidebar_frame, before=self.game_paned, width=200)
             self.sidebar_visible = True
-            self.btn_sidebar.config(relief=tk.SUNKEN, bg="#ccc")
+            self.btn_sidebar.config(relief=tk.SUNKEN)
 
     def on_file_select(self, event):
         selection = self.file_listbox.curselection()
@@ -310,84 +384,74 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
+        # Use Dynamic Colors
+        c = self.c 
+        
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
         fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="normal")
 
         for r in range(self.height):
-            for c in range(self.width):
-                x1 = c * self.cell_size
+            for c_idx in range(self.width):
+                x1 = c_idx * self.cell_size
                 y1 = r * self.cell_size
                 x2 = x1 + self.cell_size
                 y2 = y1 + self.cell_size
                 
-                idx = self.get_index(c, r)
+                idx = self.get_index(c_idx, r)
                 cell_val = self.user_grid[idx]
                 sol_val = self.solution_grid[idx]
                 
-                bg_color = "white"
+                bg_color = c['grid_bg']
                 if sol_val == '.':
-                    bg_color = "black"
-                elif r == self.cursor_row and c == self.cursor_col:
-                    bg_color = "#FFEB3B"
-                elif self.is_highlighted(c, r):
-                    bg_color = "#E1F5FE"
+                    bg_color = c['black_sq']
+                elif r == self.cursor_row and c_idx == self.cursor_col:
+                    bg_color = c['cursor']
+                elif self.is_highlighted(c_idx, r):
+                    bg_color = c['highlight']
                 
+                # Draw square
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
-                if (c, r) in self.grid_numbers:
-                    self.canvas.create_text(x1+2, y1+1, anchor="nw", text=str(self.grid_numbers[(c,r)]), font=fnt_num, fill="#222222")
+                # Draw Number
+                if (c_idx, r) in self.grid_numbers:
+                    self.canvas.create_text(x1+2, y1+1, anchor="nw", text=str(self.grid_numbers[(c_idx,r)]), font=fnt_num, fill=c['grid_num'])
 
+                # Draw Letter
                 if cell_val not in ['-', '.']:
-                    text_color = "black"
+                    text_color = c['grid_fg']
                     if self.var_error_check.get() and not self.is_redacted:
                         if cell_val != sol_val:
-                            text_color = "red"
+                            text_color = c['error']
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
         
-        # Check for completed words to gray them out
         self.check_completed_clues()
 
     def check_completed_clues(self):
-        """Gray out clues that are fully filled"""
-        
         def check_list(clue_list, direction):
             txt_widget = self.txt_across if direction == 'across' else self.txt_down
-            
-            # Temporary enable to edit tags
-            # (Tags can be added even if disabled, but safer to follow pattern)
-            
             for clue in clue_list:
-                # Find cells for this clue
                 start_cell = clue['cell']
                 r = start_cell // self.width
                 c = start_cell % self.width
-                
                 is_filled = True
-                
-                # Iterate cells in word
                 curr_r, curr_c = r, c
                 while 0 <= curr_r < self.height and 0 <= curr_c < self.width:
                     idx = self.get_index(curr_c, curr_r)
                     if self.solution_grid[idx] == '.': break
-                    
                     if self.user_grid[idx] in ['-', '.']:
                         is_filled = False
                         break
-                    
                     if direction == 'across': curr_c += 1
                     else: curr_r += 1
                 
-                # Apply/Remove Tag
                 tag_name = f"{direction}_{clue['num']}"
-                if is_filled:
-                    ranges = txt_widget.tag_ranges(tag_name)
-                    if ranges:
+                ranges = txt_widget.tag_ranges(tag_name)
+                if ranges:
+                    if is_filled:
                         txt_widget.tag_add("completed", ranges[0], ranges[1])
-                else:
-                    ranges = txt_widget.tag_ranges(tag_name)
-                    if ranges:
+                    else:
                         txt_widget.tag_remove("completed", ranges[0], ranges[1])
 
         check_list(self.clue_mapping.across, 'across')

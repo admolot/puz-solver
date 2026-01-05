@@ -5,7 +5,7 @@ import puz
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver v2")
+        self.root.title("Python .puz Solver v2.1")
         self.root.geometry("1000x700")
 
         # Game State
@@ -20,7 +20,7 @@ class CrosswordApp:
         # Navigation State
         self.cursor_col = 0
         self.cursor_row = 0
-        self.direction = 'across' # 'across' or 'down'
+        self.direction = 'across'
         
         # Settings Variables
         self.var_error_check = tk.BooleanVar(value=False)
@@ -60,25 +60,23 @@ class CrosswordApp:
         main_content = tk.Frame(self.root)
         main_content.pack(side=tk.TOP, expand=True, fill=tk.BOTH, padx=10, pady=10)
 
-        # Current Clue Display (Top)
+        # Current Clue Display
         self.lbl_current_clue = tk.Label(top_frame, text="Open a file to begin", font=("Arial", 14, "bold"), wraplength=800)
         self.lbl_current_clue.pack()
 
-        # Grid (Left)
+        # Grid
         self.canvas = tk.Canvas(main_content, bg="white", highlightthickness=0)
         self.canvas.pack(side=tk.LEFT, expand=False, fill=tk.BOTH)
 
-        # Clues Lists (Right)
+        # Clues Lists
         right_panel = tk.Frame(main_content)
         right_panel.pack(side=tk.RIGHT, expand=True, fill=tk.BOTH)
         
-        # Across Clues
         lbl_across = tk.Label(right_panel, text="Across", font=("Arial", 12, "bold"))
         lbl_across.pack(side=tk.TOP, anchor="w")
         self.list_across = tk.Listbox(right_panel, font=("Arial", 10), exportselection=False)
         self.list_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
 
-        # Down Clues
         lbl_down = tk.Label(right_panel, text="Down", font=("Arial", 12, "bold"))
         lbl_down.pack(side=tk.TOP, anchor="w")
         self.list_down = tk.Listbox(right_panel, font=("Arial", 10), exportselection=False)
@@ -87,10 +85,8 @@ class CrosswordApp:
         # Bindings
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
-        # Bind Control keys
         self.root.bind("<Control_L>", self.reveal_current)
         self.root.bind("<Control_R>", self.reveal_current)
-        # Tab key
         self.root.bind("<Tab>", lambda e: self.jump_to_next_word())
 
     def load_puz_file(self):
@@ -185,7 +181,6 @@ class CrosswordApp:
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
-                    # Error Check Logic
                     if self.var_error_check.get() and cell_val != sol_val:
                         text_color = "red"
                     
@@ -214,18 +209,18 @@ class CrosswordApp:
                 end_r += 1
             return start_r <= row <= end_r
 
-def handle_keypress(self, event):
+    def handle_keypress(self, event):
         if not self.puzzle: return
         
         key = event.keysym
         
-        # FIX: Strictly ignore typing if Control key is held down.
-        # 0x0004 is the standard bit mask for Control on Windows/Linux.
-        # This prevents Ctrl+C, Ctrl+X, or just holding Ctrl from typing garbage.
+        # --- FIX: STRICTLY IGNORE IF CONTROL IS HELD ---
+        # 0x0004 is the bitmask for Control. 
+        # This prevents "Ctrl" presses from being interpreted as typed letters.
         if event.state & 0x0004:
             return "break"
-
-        # Ignore modifier keys pressing themselves
+        
+        # Also ignore modifier keys themselves
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 
@@ -254,7 +249,6 @@ def handle_keypress(self, event):
             self.refresh_grid()
 
             if self.var_error_check.get():
-                # If error check ON: only move if correct
                 if char == correct_char:
                     self.step_forward()
             else:
@@ -263,9 +257,8 @@ def handle_keypress(self, event):
         return "break"
 
     def reveal_current(self, event):
-        """Reveal current letter and move next (Ctrl key)"""
         if not self.puzzle: return
-        if not self.var_ctrl_reveal.get(): return # Check if option enabled
+        if not self.var_ctrl_reveal.get(): return 
         
         idx = self.get_index(self.cursor_col, self.cursor_row)
         correct_char = self.solution_grid[idx]
@@ -292,7 +285,6 @@ def handle_keypress(self, event):
         dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
         next_r, next_c = self.cursor_row + dr, self.cursor_col + dc
         
-        # Check if we hit a wall or a black square
         hit_block = False
         if not (0 <= next_r < self.height and 0 <= next_c < self.width):
             hit_block = True
@@ -300,10 +292,8 @@ def handle_keypress(self, event):
             hit_block = True
             
         if hit_block:
-            # Check user preference: Stay or Jump
             if self.var_end_behavior.get() == "next":
                 self.jump_to_next_word()
-            # If "stay", do nothing
         else:
             self.cursor_row = next_r
             self.cursor_col = next_c
@@ -311,20 +301,17 @@ def handle_keypress(self, event):
             self.update_clue_display()
 
     def jump_to_next_word(self):
-        """Finds the next clue in the sequence and jumps there"""
         if not self.puzzle: return
         
-        # 1. Determine current clue index
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         
-        # Find the start cell of current word
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
             while c >= 0 and self.solution_grid[self.get_index(c, self.cursor_row)] != '.':
                 start_idx = self.get_index(c, self.cursor_row)
                 c -= 1
-        else: # Down
+        else: 
             r = self.cursor_row
             while r >= 0 and self.solution_grid[self.get_index(self.cursor_col, r)] != '.':
                 start_idx = self.get_index(self.cursor_col, r)
@@ -332,16 +319,13 @@ def handle_keypress(self, event):
 
         target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
         
-        # 2. Find current clue position in list and move to next
         next_clue = None
         for i, clue in enumerate(target_list):
             if clue['cell'] == start_idx:
-                # We found current clue, get the next one (wrap around)
                 next_index = (i + 1) % len(target_list)
                 next_clue = target_list[next_index]
                 break
         
-        # Fallback if we were on a black square or something weird
         if next_clue is None and len(target_list) > 0:
             next_clue = target_list[0]
 
@@ -356,9 +340,6 @@ def handle_keypress(self, event):
         new_r, new_c = self.cursor_row + dr, self.cursor_col + dc
         
         if 0 <= new_r < self.height and 0 <= new_c < self.width:
-             # Skip over black squares backwards? 
-             # Standard behavior usually stops at black squares or jumps over. 
-             # Let's keep it simple: stop at black squares/edges
             if self.solution_grid[self.get_index(new_c, new_r)] != '.':
                 self.cursor_row = new_r
                 self.cursor_col = new_c

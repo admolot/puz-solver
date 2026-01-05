@@ -6,7 +6,7 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.0")
+        self.root.title("Python .puz Solver - v5.1")
         self.root.geometry("1200x750")
 
         # Game State
@@ -28,7 +28,7 @@ class CrosswordApp:
         # Settings Variables
         self.var_error_check = tk.BooleanVar(value=False)
         self.var_ctrl_reveal = tk.BooleanVar(value=True)
-        self.var_skip_filled = tk.BooleanVar(value=False) # New Option
+        self.var_skip_filled = tk.BooleanVar(value=False)
         self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
         self.cell_size = 35 
         
@@ -201,7 +201,6 @@ class CrosswordApp:
         if full_path != self.current_file_path:
             self.load_puz_file(full_path)
         
-        # FIX: Immediately return focus to canvas for keyboard nav
         self.canvas.focus_set()
 
     def parse_clues(self):
@@ -237,8 +236,12 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
-        fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.3))
-        fnt_char = font.Font(family="Arial", size=int(self.cell_size*0.6), weight="bold")
+        # --- VISUAL TWEAKS ---
+        # Numbers: Smaller (0.28) and standard weight
+        fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
+        
+        # Letters: Helvetica (Cleaner), Larger (0.65), Bold
+        fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.65), weight="bold")
 
         for r in range(self.height):
             for c in range(self.width):
@@ -255,14 +258,15 @@ class CrosswordApp:
                 if sol_val == '.':
                     bg_color = "black"
                 elif r == self.cursor_row and c == self.cursor_col:
-                    bg_color = "#FFFF00"
+                    bg_color = "#FFEB3B" # Vivid Yellow
                 elif self.is_highlighted(c, r):
-                    bg_color = "#E0F7FA"
+                    bg_color = "#E1F5FE" # Very Light Blue
                 
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="black")
+                self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
                 if (c, r) in self.grid_numbers:
-                    self.canvas.create_text(x1+2, y1+2, anchor="nw", text=str(self.grid_numbers[(c,r)]), font=fnt_num)
+                    # Number tucked in top-left
+                    self.canvas.create_text(x1+2, y1+1, anchor="nw", text=str(self.grid_numbers[(c,r)]), font=fnt_num, fill="#222222")
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
@@ -270,7 +274,8 @@ class CrosswordApp:
                         if cell_val != sol_val:
                             text_color = "red"
                     
-                    self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2, 
+                    # Letter centered, slightly shifted down (+2) to clear number
+                    self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
 
     def is_highlighted(self, col, row):
@@ -318,7 +323,6 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
-            # Backspace behavior: Move back smartly, then delete that cell
             self.move_smart(0, -1)
             self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
             self.refresh_grid()
@@ -333,23 +337,16 @@ class CrosswordApp:
         return "break"
 
     def move_smart(self, dr, dc):
-        """Move cursor skipping black squares and wrapping lines"""
         r, c = self.cursor_row, self.cursor_col
-        
-        # Loop to find next white square
         while True:
             r += dr
             c += dc
-            
-            # Wrap Horizontal
             if c < 0:
                 r -= 1
                 c = self.width - 1
             elif c >= self.width:
                 r += 1
                 c = 0
-            
-            # Wrap Vertical
             if r < 0:
                 r = self.height - 1
                 c = self.width - 1
@@ -357,7 +354,6 @@ class CrosswordApp:
                 r = 0
                 c = 0
             
-            # Check if white square
             idx = self.get_index(c, r)
             if self.solution_grid[idx] != '.':
                 self.cursor_row = r
@@ -365,8 +361,6 @@ class CrosswordApp:
                 self.refresh_grid()
                 self.update_clue_display()
                 return
-            
-            # If we looped all the way back (safety)
             if r == self.cursor_row and c == self.cursor_col:
                 break
 
@@ -432,15 +426,11 @@ class CrosswordApp:
 
     def step_forward(self):
         dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
-        
-        # We start from current position
         r, c = self.cursor_row, self.cursor_col
         
         while True:
             r += dr
             c += dc
-            
-            # 1. Check if we hit a wall or black square
             hit_block = False
             if not (0 <= r < self.height and 0 <= c < self.width):
                 hit_block = True
@@ -450,17 +440,14 @@ class CrosswordApp:
             if hit_block:
                 if self.var_end_behavior.get() == "next":
                     self.jump_to_next_word()
-                return # Stop if behavior is 'stay' or after jumping
+                return
             
-            # 2. It's a valid white square. Should we skip it?
             idx = self.get_index(c, r)
             is_filled = self.user_grid[idx] not in ['-', '.']
             
             if self.var_skip_filled.get() and is_filled:
-                # Yes, skip this filled square and loop again
                 continue
             else:
-                # Found our spot
                 self.cursor_row = r
                 self.cursor_col = c
                 self.refresh_grid()

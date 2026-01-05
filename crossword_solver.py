@@ -214,12 +214,18 @@ class CrosswordApp:
                 end_r += 1
             return start_r <= row <= end_r
 
-    def handle_keypress(self, event):
+def handle_keypress(self, event):
         if not self.puzzle: return
         
         key = event.keysym
         
-        # Explicitly ignore Modifier keys here to prevent "x" or other weird chars
+        # FIX: Strictly ignore typing if Control key is held down.
+        # 0x0004 is the standard bit mask for Control on Windows/Linux.
+        # This prevents Ctrl+C, Ctrl+X, or just holding Ctrl from typing garbage.
+        if event.state & 0x0004:
+            return "break"
+
+        # Ignore modifier keys pressing themselves
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 

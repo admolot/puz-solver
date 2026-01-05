@@ -5,7 +5,7 @@ import puz
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v3.2")
+        self.root.title("Python .puz Solver - v3.3")
         self.root.geometry("1000x700")
 
         # Game State
@@ -16,6 +16,7 @@ class CrosswordApp:
         self.user_grid = []     
         self.grid_numbers = {}  
         self.clue_mapping = None
+        self.is_redacted = False # New flag to track if answers are 'X'
         
         # Navigation State
         self.cursor_col = 0
@@ -39,10 +40,10 @@ class CrosswordApp:
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
         
-        # Reveal Menu (NEW)
-        reveal_menu = tk.Menu(menubar, tearoff=0)
-        reveal_menu.add_command(label="Reveal Current Word", command=self.reveal_current_word)
-        menubar.add_cascade(label="Reveal", menu=reveal_menu)
+        # Reveal Menu
+        self.reveal_menu = tk.Menu(menubar, tearoff=0)
+        self.reveal_menu.add_command(label="Reveal Current Word", command=self.reveal_current_word)
+        menubar.add_cascade(label="Reveal", menu=self.reveal_menu)
         
         # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
@@ -103,6 +104,21 @@ class CrosswordApp:
         self.height = self.puzzle.height
         
         self.solution_grid = list(self.puzzle.solution)
+        
+        # --- NEW: Check for Redacted/Hidden Answers ---
+        self.is_redacted = False
+        # Count how many 'X's are in the solution
+        x_count = self.solution_grid.count('X') + self.solution_grid.count('x')
+        total_cells = len(self.solution_grid) - self.solution_grid.count('.')
+        
+        if total_cells > 0 and (x_count / total_cells) > 0.8:
+            self.is_redacted = True
+            messagebox.showwarning("Hidden Answers", 
+                                   "This puzzle file has redacted answers (it lists 'X' as the solution).\n\n"
+                                   "'Reveal' and 'Error Check' will be disabled so you can solve it without interference.")
+            # Force Error Check OFF
+            self.var_error_check.set(False)
+
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
         max_h = 600
@@ -181,7 +197,8 @@ class CrosswordApp:
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
-                    if self.var_error_check.get():
+                    # Only show red errors if NOT redacted
+                    if self.var_error_check.get() and not self.is_redacted:
                         if cell_val != sol_val:
                             text_color = "red"
                     
@@ -249,36 +266,35 @@ class CrosswordApp:
     def reveal_current_word(self):
         """Reveal the entire current word (Across or Down)"""
         if not self.puzzle: return
+        
+        # --- CHECK IF REDACTED ---
+        if self.is_redacted:
+            messagebox.showinfo("Cannot Reveal", "This puzzle has hidden answers (all 'X's). The Reveal function cannot show the real word.")
+            return
 
         # Get current position
         r, c = self.cursor_row, self.cursor_col
         
         if self.direction == 'across':
-            # Scan left to find start
             start_c = c
             while start_c > 0 and self.solution_grid[self.get_index(start_c-1, r)] != '.':
                 start_c -= 1
-            # Scan right to find end
             end_c = c
             while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, r)] != '.':
                 end_c += 1
             
-            # Fill Letters
             for col in range(start_c, end_c + 1):
                 idx = self.get_index(col, r)
                 self.user_grid[idx] = self.solution_grid[idx]
                 
         else: # Down
-            # Scan up to find start
             start_r = r
             while start_r > 0 and self.solution_grid[self.get_index(c, start_r-1)] != '.':
                 start_r -= 1
-            # Scan down to find end
             end_r = r
             while end_r < self.height - 1 and self.solution_grid[self.get_index(c, end_r+1)] != '.':
                 end_r += 1
             
-            # Fill Letters
             for row in range(start_r, end_r + 1):
                 idx = self.get_index(c, row)
                 self.user_grid[idx] = self.solution_grid[idx]

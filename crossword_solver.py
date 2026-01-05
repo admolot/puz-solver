@@ -5,7 +5,7 @@ import puz
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver v2.1")
+        self.root.title("Python .puz Solver v2.2")
         self.root.geometry("1000x700")
 
         # Game State
@@ -16,6 +16,7 @@ class CrosswordApp:
         self.user_grid = []     
         self.grid_numbers = {}  
         self.clue_mapping = None
+        self.is_scrambled = False
         
         # Navigation State
         self.cursor_col = 0
@@ -101,7 +102,24 @@ class CrosswordApp:
 
         self.width = self.puzzle.width
         self.height = self.puzzle.height
+        
+        # Check for scrambled/locked puzzle
+        self.is_scrambled = False
+        if self.puzzle.is_scrambled():
+            self.is_scrambled = True
+            messagebox.showwarning("Locked Puzzle", 
+                "This puzzle is Scrambled/Locked.\n\nThe solution is encrypted or hidden. "
+                "Error Check and Reveal functions will NOT work correctly (they may show garbage or 'x').")
+
         self.solution_grid = list(self.puzzle.solution)
+        
+        # Basic sanity check: if solution is all 'x' or '.', warn user
+        x_count = self.solution_grid.count('x') + self.solution_grid.count('X')
+        if x_count > len(self.solution_grid) * 0.5:
+             messagebox.showwarning("Redacted Solution", 
+                "This file appears to have a redacted solution (mostly 'x's).\n\n"
+                "The author likely removed the answers to prevent cheating.")
+
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
         # Calculate sizing
@@ -181,8 +199,11 @@ class CrosswordApp:
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
-                    if self.var_error_check.get() and cell_val != sol_val:
-                        text_color = "red"
+                    
+                    # Error Check Logic: Only check if NOT scrambled
+                    if self.var_error_check.get() and not self.is_scrambled:
+                        if cell_val != sol_val:
+                            text_color = "red"
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
@@ -215,12 +236,9 @@ class CrosswordApp:
         key = event.keysym
         
         # --- FIX: STRICTLY IGNORE IF CONTROL IS HELD ---
-        # 0x0004 is the bitmask for Control. 
-        # This prevents "Ctrl" presses from being interpreted as typed letters.
         if event.state & 0x0004:
             return "break"
         
-        # Also ignore modifier keys themselves
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 
@@ -248,10 +266,13 @@ class CrosswordApp:
             self.user_grid[idx] = char
             self.refresh_grid()
 
-            if self.var_error_check.get():
+            # Move logic
+            if self.var_error_check.get() and not self.is_scrambled:
+                # Only move if correct
                 if char == correct_char:
                     self.step_forward()
             else:
+                # Standard mode or Scrambled: always move
                 self.step_forward()
         
         return "break"
@@ -260,6 +281,9 @@ class CrosswordApp:
         if not self.puzzle: return
         if not self.var_ctrl_reveal.get(): return 
         
+        if self.is_scrambled:
+            return # Don't reveal scrambled garbage
+            
         idx = self.get_index(self.cursor_col, self.cursor_row)
         correct_char = self.solution_grid[idx]
         

@@ -1,44 +1,55 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz
-import math
 
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver")
+        self.root.title("Python .puz Solver v2")
         self.root.geometry("1000x700")
 
         # Game State
         self.puzzle = None
         self.width = 0
         self.height = 0
-        self.solution_grid = [] # 1D array of correct characters
-        self.user_grid = []     # 1D array of user characters
-        self.grid_numbers = {}  # Map (col, row) -> number
+        self.solution_grid = [] 
+        self.user_grid = []     
+        self.grid_numbers = {}  
+        self.clue_mapping = None
         
         # Navigation State
         self.cursor_col = 0
         self.cursor_row = 0
-        self.direction = 'across' # or 'down'
+        self.direction = 'across' # 'across' or 'down'
         
-        # Settings
-        self.error_check_mode = tk.BooleanVar(value=False)
-        self.cell_size = 35 # Size of grid squares
+        # Settings Variables
+        self.var_error_check = tk.BooleanVar(value=False)
+        self.var_ctrl_reveal = tk.BooleanVar(value=True)
+        self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
+        self.cell_size = 35 
 
         # --- UI Layout ---
         
         # Menu
         menubar = tk.Menu(self.root)
+        
+        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Open .puz File", command=self.load_puz_file)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=root.quit)
         menubar.add_cascade(label="File", menu=file_menu)
         
+        # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
         options_menu.add_checkbutton(label="Error Check Mode", onvalue=True, offvalue=False, 
-                                     variable=self.error_check_mode, command=self.refresh_grid)
+                                     variable=self.var_error_check, command=self.refresh_grid)
+        options_menu.add_checkbutton(label="Enable 'Ctrl' to Reveal", onvalue=True, offvalue=False, 
+                                     variable=self.var_ctrl_reveal)
+        options_menu.add_separator()
+        options_menu.add_radiobutton(label="At end of word: Jump to Next", value="next", variable=self.var_end_behavior)
+        options_menu.add_radiobutton(label="At end of word: Stay", value="stay", variable=self.var_end_behavior)
+        
         menubar.add_cascade(label="Options", menu=options_menu)
         self.root.config(menu=menubar)
 
@@ -76,18 +87,15 @@ class CrosswordApp:
         # Bindings
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
-        # Bind Control keys specifically for the Reveal function
+        # Bind Control keys
         self.root.bind("<Control_L>", self.reveal_current)
         self.root.bind("<Control_R>", self.reveal_current)
-        
-        # Scroll logic for listboxes to sync with selection (optional/basic)
-        self.list_across.bind("<<ListboxSelect>>", lambda e: self.jump_to_clue('across'))
-        self.list_down.bind("<<ListboxSelect>>", lambda e: self.jump_to_clue('down'))
+        # Tab key
+        self.root.bind("<Tab>", lambda e: self.jump_to_next_word())
 
     def load_puz_file(self):
         filename = filedialog.askopenfilename(filetypes=[("Puzzle Files", "*.puz"), ("All Files", "*.*")])
-        if not filename:
-            return
+        if not filename: return
 
         try:
             self.puzzle = puz.read(filename)
@@ -95,11 +103,9 @@ class CrosswordApp:
             messagebox.showerror("Error", f"Failed to load file: {e}")
             return
 
-        # Initialize Data
         self.width = self.puzzle.width
         self.height = self.puzzle.height
         self.solution_grid = list(self.puzzle.solution)
-        # User grid: '.' is black, '-' is empty. We make a copy.
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
         # Calculate sizing
@@ -107,10 +113,8 @@ class CrosswordApp:
         self.cell_size = min(40, max_h // self.height)
         self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
 
-        # Parse Clues and Numbering
         self.parse_clues()
         
-        # Reset Cursor
         self.cursor_col = 0
         self.cursor_row = 0
         self.direction = 'across'
@@ -120,33 +124,25 @@ class CrosswordApp:
         self.update_clue_display()
 
     def parse_clues(self):
-        # puzpy helper to get numbering
-        numbering = self.puzzle.clue_numbering()
+        self.clue_mapping = self.puzzle.clue_numbering()
         
         self.grid_numbers = {}
-        self.clues_across = [] # Stores (number, text, [cells])
-        self.clues_down = []
-        
         self.list_across.delete(0, tk.END)
         self.list_down.delete(0, tk.END)
 
-        for clue in numbering.across:
+        for clue in self.clue_mapping.across:
             self.list_across.insert(tk.END, f"{clue['num']}. {clue['clue']}")
-            # Map numbering to grid for display
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
             
-        for clue in numbering.down:
+        for clue in self.clue_mapping.down:
             self.list_down.insert(tk.END, f"{clue['num']}. {clue['clue']}")
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
-            
-        self.clue_mapping = numbering
 
     def find_first_valid_cell(self):
-        # Find the first non-black square to start cursor
         for i, char in enumerate(self.solution_grid):
             if char != '.':
                 self.cursor_row = i // self.width
@@ -174,40 +170,33 @@ class CrosswordApp:
                 cell_val = self.user_grid[idx]
                 sol_val = self.solution_grid[idx]
                 
-                # Background Color
                 bg_color = "white"
                 if sol_val == '.':
                     bg_color = "black"
                 elif r == self.cursor_row and c == self.cursor_col:
-                    bg_color = "#FFFF00" # Yellow for cursor
+                    bg_color = "#FFFF00"
                 elif self.is_highlighted(c, r):
-                    bg_color = "#E0F7FA" # Cyan tint for current word
+                    bg_color = "#E0F7FA"
                 
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="black")
 
-                # Numbers
                 if (c, r) in self.grid_numbers:
                     self.canvas.create_text(x1+2, y1+2, anchor="nw", text=str(self.grid_numbers[(c,r)]), font=fnt_num)
 
-                # Characters
                 if cell_val not in ['-', '.']:
                     text_color = "black"
                     # Error Check Logic
-                    if self.error_check_mode.get() and cell_val != sol_val:
+                    if self.var_error_check.get() and cell_val != sol_val:
                         text_color = "red"
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
 
     def is_highlighted(self, col, row):
-        # Highlight the word associated with the cursor direction
-        if self.solution_grid[self.get_index(col, row)] == '.':
-            return False
+        if self.solution_grid[self.get_index(col, row)] == '.': return False
         
-        # Simple check: are we in the same word line?
         if self.direction == 'across':
             if row != self.cursor_row: return False
-            # Scan left and right from cursor to find boundaries
             start_c = self.cursor_col
             while start_c > 0 and self.solution_grid[self.get_index(start_c-1, row)] != '.':
                 start_c -= 1
@@ -230,6 +219,10 @@ class CrosswordApp:
         
         key = event.keysym
         
+        # Explicitly ignore Modifier keys here to prevent "x" or other weird chars
+        if "Control" in key or "Alt" in key or "Shift" in key:
+            return
+
         if key == "Left":
             self.move_cursor(0, -1)
         elif key == "Right":
@@ -251,22 +244,22 @@ class CrosswordApp:
             idx = self.get_index(self.cursor_col, self.cursor_row)
             correct_char = self.solution_grid[idx]
             
-            # Logic: Update grid
             self.user_grid[idx] = char
             self.refresh_grid()
 
-            # Logic: Move Cursor
-            if self.error_check_mode.get():
+            if self.var_error_check.get():
                 # If error check ON: only move if correct
                 if char == correct_char:
                     self.step_forward()
             else:
-                # Standard: always move
                 self.step_forward()
+        
+        return "break"
 
     def reveal_current(self, event):
         """Reveal current letter and move next (Ctrl key)"""
         if not self.puzzle: return
+        if not self.var_ctrl_reveal.get(): return # Check if option enabled
         
         idx = self.get_index(self.cursor_col, self.cursor_row)
         correct_char = self.solution_grid[idx]
@@ -276,6 +269,7 @@ class CrosswordApp:
         self.user_grid[idx] = correct_char
         self.refresh_grid()
         self.step_forward()
+        return "break"
 
     def move_cursor(self, dr, dc):
         new_r = self.cursor_row + dr
@@ -289,38 +283,77 @@ class CrosswordApp:
                 self.update_clue_display()
 
     def step_forward(self):
-        # Move to next cell in current direction, skipping filled blacks?
-        # Standard crossword behavior: just go to next cell, skip blacks
         dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
-        
-        # Try moving
         next_r, next_c = self.cursor_row + dr, self.cursor_col + dc
         
-        # Simple bounds check
-        if 0 <= next_r < self.height and 0 <= next_c < self.width:
-            # If black, skip over it
-            while 0 <= next_r < self.height and 0 <= next_c < self.width and \
-                  self.solution_grid[self.get_index(next_c, next_r)] == '.':
-                next_r += dr
-                next_c += dc
+        # Check if we hit a wall or a black square
+        hit_block = False
+        if not (0 <= next_r < self.height and 0 <= next_c < self.width):
+            hit_block = True
+        elif self.solution_grid[self.get_index(next_c, next_r)] == '.':
+            hit_block = True
             
-            if 0 <= next_r < self.height and 0 <= next_c < self.width:
-                self.cursor_row = next_r
-                self.cursor_col = next_c
-                self.refresh_grid()
-                self.update_clue_display()
+        if hit_block:
+            # Check user preference: Stay or Jump
+            if self.var_end_behavior.get() == "next":
+                self.jump_to_next_word()
+            # If "stay", do nothing
+        else:
+            self.cursor_row = next_r
+            self.cursor_col = next_c
+            self.refresh_grid()
+            self.update_clue_display()
+
+    def jump_to_next_word(self):
+        """Finds the next clue in the sequence and jumps there"""
+        if not self.puzzle: return
+        
+        # 1. Determine current clue index
+        current_idx = self.get_index(self.cursor_col, self.cursor_row)
+        
+        # Find the start cell of current word
+        start_idx = current_idx
+        if self.direction == 'across':
+            c = self.cursor_col
+            while c >= 0 and self.solution_grid[self.get_index(c, self.cursor_row)] != '.':
+                start_idx = self.get_index(c, self.cursor_row)
+                c -= 1
+        else: # Down
+            r = self.cursor_row
+            while r >= 0 and self.solution_grid[self.get_index(self.cursor_col, r)] != '.':
+                start_idx = self.get_index(self.cursor_col, r)
+                r -= 1
+
+        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
+        
+        # 2. Find current clue position in list and move to next
+        next_clue = None
+        for i, clue in enumerate(target_list):
+            if clue['cell'] == start_idx:
+                # We found current clue, get the next one (wrap around)
+                next_index = (i + 1) % len(target_list)
+                next_clue = target_list[next_index]
+                break
+        
+        # Fallback if we were on a black square or something weird
+        if next_clue is None and len(target_list) > 0:
+            next_clue = target_list[0]
+
+        if next_clue:
+            self.cursor_row = next_clue['cell'] // self.width
+            self.cursor_col = next_clue['cell'] % self.width
+            self.refresh_grid()
+            self.update_clue_display()
 
     def move_cursor_back(self):
         dr, dc = (0, -1) if self.direction == 'across' else (-1, 0)
         new_r, new_c = self.cursor_row + dr, self.cursor_col + dc
         
         if 0 <= new_r < self.height and 0 <= new_c < self.width:
-             while 0 <= new_r < self.height and 0 <= new_c < self.width and \
-                  self.solution_grid[self.get_index(new_c, new_r)] == '.':
-                new_r += dr
-                new_c += dc
-             
-             if 0 <= new_r < self.height and 0 <= new_c < self.width:
+             # Skip over black squares backwards? 
+             # Standard behavior usually stops at black squares or jumps over. 
+             # Let's keep it simple: stop at black squares/edges
+            if self.solution_grid[self.get_index(new_c, new_r)] != '.':
                 self.cursor_row = new_r
                 self.cursor_col = new_c
                 self.refresh_grid()
@@ -335,7 +368,6 @@ class CrosswordApp:
             if self.solution_grid[self.get_index(c, r)] == '.':
                 return
             
-            # If clicking same square, toggle direction
             if c == self.cursor_col and r == self.cursor_row:
                 self.direction = 'down' if self.direction == 'across' else 'across'
             else:
@@ -346,34 +378,25 @@ class CrosswordApp:
             self.update_clue_display()
 
     def update_clue_display(self):
-        # Find clue number for current cursor
-        # This is a bit complex in puzpy struct, but we can do a reverse lookup or search
-        # puzpy numbering helper has 'across' list of dicts: {'num': 1, 'clue': '...', 'cell': 0}
-        
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         
-        found_clue = ""
-        clue_num = -1
-        
-        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
-        
-        # We need to find which word the cursor belongs to.
-        # Efficient way: find the starting cell of the word containing cursor
         start_idx = current_idx
         if self.direction == 'across':
-            # walk left
             c = self.cursor_col
             while c >= 0 and self.solution_grid[self.get_index(c, self.cursor_row)] != '.':
                 start_idx = self.get_index(c, self.cursor_row)
                 c -= 1
         else:
-            # walk up
             r = self.cursor_row
             while r >= 0 and self.solution_grid[self.get_index(self.cursor_col, r)] != '.':
                 start_idx = self.get_index(self.cursor_col, r)
                 r -= 1
                 
-        # Now find the clue that starts at start_idx
+        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
+        
+        found_clue = ""
+        clue_num = -1
+        
         for clue in target_list:
             if clue['cell'] == start_idx:
                 found_clue = f"{clue['num']}. {clue['clue']}"
@@ -381,25 +404,17 @@ class CrosswordApp:
                 break
         
         self.lbl_current_clue.config(text=found_clue)
-        
-        # Highlight in Listbox
         self.highlight_listbox(self.list_across, clue_num, self.direction == 'across')
         self.highlight_listbox(self.list_down, clue_num, self.direction == 'down')
 
     def highlight_listbox(self, listbox, clue_num, is_active_direction):
         listbox.selection_clear(0, tk.END)
         if not is_active_direction: return
-        
-        # Find index
         for i, item in enumerate(listbox.get(0, tk.END)):
             if item.startswith(f"{clue_num}."):
                 listbox.selection_set(i)
                 listbox.see(i)
                 break
-                
-    def jump_to_clue(self, direction):
-        # Optional: Click listbox to move cursor
-        pass
 
 if __name__ == "__main__":
     root = tk.Tk()

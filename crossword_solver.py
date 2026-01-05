@@ -6,7 +6,7 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.2")
+        self.root.title("Python .puz Solver - v5.3")
         self.root.geometry("1200x750")
 
         # Game State
@@ -75,11 +75,11 @@ class CrosswordApp:
         self.btn_sidebar = tk.Button(top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE, bg="#e9ecef")
         self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 15))
 
-        # NEW: Filename Label
+        # Filename Label
         self.lbl_filename = tk.Label(top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"), fg="#555", bg="#f8f9fa")
         self.lbl_filename.pack(side=tk.LEFT)
 
-        # Current Clue Display (Right aligned roughly)
+        # Current Clue Display
         self.lbl_current_clue = tk.Label(top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600, bg="#f8f9fa", fg="#000")
         self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=10)
 
@@ -111,7 +111,6 @@ class CrosswordApp:
         frame_across = tk.Frame(right_panel)
         frame_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=(0, 10))
         
-        # Scrollbar Across
         sb_across = tk.Scrollbar(frame_across)
         sb_across.pack(side=tk.RIGHT, fill=tk.Y)
         
@@ -127,7 +126,6 @@ class CrosswordApp:
         frame_down = tk.Frame(right_panel)
         frame_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
         
-        # Scrollbar Down
         sb_down = tk.Scrollbar(frame_down)
         sb_down.pack(side=tk.RIGHT, fill=tk.Y)
         
@@ -138,7 +136,7 @@ class CrosswordApp:
 
         # Config Tags for Highlighting
         for txt in [self.txt_across, self.txt_down]:
-            txt.tag_config("highlight", background="#E1F5FE") # Light Blue
+            txt.tag_config("highlight", background="#E1F5FE") 
             txt.tag_config("default", background="white")
 
         # Bindings
@@ -161,7 +159,6 @@ class CrosswordApp:
             messagebox.showerror("Error", f"Failed to load file.\n\nDetails: {e}")
             return
 
-        # Update Filename Label
         base_name = os.path.basename(filename)
         self.lbl_filename.config(text=base_name)
 
@@ -252,11 +249,8 @@ class CrosswordApp:
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
             
-            # Insert with tag
             tag = f"across_{clue['num']}"
             self.txt_across.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
-            
-            # Make clickable
             self.txt_across.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'across'))
 
         self.txt_across.config(state=tk.DISABLED)
@@ -276,7 +270,6 @@ class CrosswordApp:
         self.txt_down.config(state=tk.DISABLED)
 
     def click_clue_text(self, num, direction):
-        # Find cell for this clue number
         target_list = self.clue_mapping.across if direction == 'across' else self.clue_mapping.down
         for clue in target_list:
             if clue['num'] == num:
@@ -301,8 +294,6 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
-        # --- VISUALS ---
-        # Fonts matching the style request
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
         fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="bold")
 
@@ -321,9 +312,9 @@ class CrosswordApp:
                 if sol_val == '.':
                     bg_color = "black"
                 elif r == self.cursor_row and c == self.cursor_col:
-                    bg_color = "#FFEB3B" # Vivid Yellow
+                    bg_color = "#FFEB3B"
                 elif self.is_highlighted(c, r):
-                    bg_color = "#E1F5FE" # Very Light Blue
+                    bg_color = "#E1F5FE"
                 
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
@@ -336,7 +327,6 @@ class CrosswordApp:
                         if cell_val != sol_val:
                             text_color = "red"
                     
-                    # Centered letters
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
 
@@ -382,14 +372,13 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
-            # --- FIXED BACKSPACE LOGIC ---
             # 1. Clear current cell
             self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
             # 2. Move back based on direction
             if self.direction == 'across':
-                self.move_smart(0, -1) # Move Left
+                self.move_smart(0, -1)
             else:
-                self.move_smart(-1, 0) # Move Up
+                self.move_smart(-1, 0)
             self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
@@ -538,9 +527,22 @@ class CrosswordApp:
             self.cursor_col = next_clue['cell'] % self.width
             self.refresh_grid()
             self.update_clue_display()
+            
+    def on_click(self, event):
+        if not self.puzzle: return
+        c = event.x // self.cell_size
+        r = event.y // self.cell_size
+        if 0 <= c < self.width and 0 <= r < self.height:
+            if self.solution_grid[self.get_index(c, r)] == '.': return
+            if c == self.cursor_col and r == self.cursor_row:
+                self.direction = 'down' if self.direction == 'across' else 'across'
+            else:
+                self.cursor_col = c
+                self.cursor_row = r
+            self.refresh_grid()
+            self.update_clue_display()
 
     def update_clue_display(self):
-        # 1. Determine clue
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         start_idx = current_idx
         if self.direction == 'across':
@@ -564,21 +566,13 @@ class CrosswordApp:
                 break
         
         self.lbl_current_clue.config(text=found_clue)
-        
-        # 2. Highlight in Text Widgets
         self.highlight_text_widget(self.txt_across, clue_num, self.direction == 'across')
         self.highlight_text_widget(self.txt_down, clue_num, self.direction == 'down')
 
     def highlight_text_widget(self, txt_widget, clue_num, is_active_direction):
-        # Clear previous highlights
         txt_widget.tag_remove("highlight", "1.0", tk.END)
-        
         if not is_active_direction or clue_num == -1: return
-
-        # Apply new highlight
         tag_name = f"across_{clue_num}" if self.direction == 'across' else f"down_{clue_num}"
-        
-        # We need to find the range of this tag
         ranges = txt_widget.tag_ranges(tag_name)
         if ranges:
             txt_widget.tag_add("highlight", ranges[0], ranges[1])

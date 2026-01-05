@@ -6,7 +6,7 @@ import os
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.4")
+        self.root.title("Python .puz Solver - v5.5")
         self.root.geometry("1200x750")
 
         # Game State
@@ -87,7 +87,7 @@ class CrosswordApp:
         self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # 1. Sidebar Frame (Content)
+        # 1. Sidebar Frame
         self.sidebar_frame = tk.Frame(self.main_paned, bg="#e0e0e0", relief=tk.SUNKEN, borderwidth=1, width=200)
         self.sidebar_label = tk.Label(self.sidebar_frame, text="Folder Content", bg="#e0e0e0", font=("Arial", 9, "bold"))
         self.sidebar_label.pack(fill=tk.X, pady=2)
@@ -96,10 +96,10 @@ class CrosswordApp:
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
         
-        # 2. Game Area Splitter (Grid vs Clues)
+        # 2. Game Area Splitter
         self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6, bg="#cccccc")
         
-        # Grid Container (to center or scroll if needed)
+        # Grid Container
         self.grid_frame = tk.Frame(self.game_paned, bg="white")
         self.canvas = tk.Canvas(self.grid_frame, bg="white", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -142,8 +142,7 @@ class CrosswordApp:
             txt.tag_config("highlight", background="#E1F5FE") 
             txt.tag_config("default", background="white")
 
-        # Initial Layout Assembly
-        # We start with Sidebar Hidden, so we only add game_paned to main_paned
+        # Initial Layout
         self.main_paned.add(self.game_paned)
         self.game_paned.add(self.grid_frame, minsize=400)
         self.game_paned.add(self.clues_frame, minsize=200)
@@ -248,32 +247,26 @@ class CrosswordApp:
         self.clue_mapping = self.puzzle.clue_numbering()
         self.grid_numbers = {}
 
-        # Fill Across Text
         self.txt_across.config(state=tk.NORMAL)
         self.txt_across.delete(1.0, tk.END)
         for clue in self.clue_mapping.across:
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
-            
             tag = f"across_{clue['num']}"
             self.txt_across.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
             self.txt_across.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'across'))
-
         self.txt_across.config(state=tk.DISABLED)
 
-        # Fill Down Text
         self.txt_down.config(state=tk.NORMAL)
         self.txt_down.delete(1.0, tk.END)
         for clue in self.clue_mapping.down:
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
-            
             tag = f"down_{clue['num']}"
             self.txt_down.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
             self.txt_down.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'down'))
-
         self.txt_down.config(state=tk.DISABLED)
 
     def click_clue_text(self, num, direction):
@@ -302,7 +295,8 @@ class CrosswordApp:
         self.canvas.delete("all")
         
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
-        fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="bold")
+        # Updated: Weight is now NORMAL (Thin letters)
+        fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="normal")
 
         for r in range(self.height):
             for c in range(self.width):
@@ -489,11 +483,16 @@ class CrosswordApp:
                 self.update_clue_display()
                 return
 
-    def jump_to_next_word(self):
+    def jump_to_next_word(self, visited_indices=None):
+        """Find start of next word, then slide if filled/skip enabled"""
         if not self.puzzle: return
         
-        # 1. Find Start of Next Word
+        # Prevent infinite recursion if grid is completely full
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
+        if visited_indices is None:
+            visited_indices = {current_idx}
+        
+        # 1. Determine Next Word Start
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -529,20 +528,51 @@ class CrosswordApp:
                 if len(current_list) > 0:
                     next_clue = current_list[0]
 
-        # 2. Execute Move
+        # 2. Move to new word start
         if next_clue:
             self.cursor_row = next_clue['cell'] // self.width
             self.cursor_col = next_clue['cell'] % self.width
             self.refresh_grid()
             self.update_clue_display()
             
-            # 3. Check "Skip Filled" Logic immediately after jumping
+            # 3. Handle Skip Filled
             if self.var_skip_filled.get():
-                # Check current cell (which is the start of the new word)
-                idx = self.get_index(self.cursor_col, self.cursor_row)
-                if self.user_grid[idx] not in ['-', '.']:
-                    # It's filled, so trigger step_forward to slide to the first empty
-                    self.step_forward()
+                dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
+                temp_r, temp_c = self.cursor_row, self.cursor_col
+                
+                # Check current cell first
+                idx = self.get_index(temp_c, temp_r)
+                if self.user_grid[idx] in ['-', '.']:
+                    return # Start is empty, stay here
+                
+                # Start is filled, look ahead in this word
+                found_empty = False
+                while True:
+                    next_r, next_c = temp_r + dr, temp_c + dc
+                    
+                    # Check if hit block/wall
+                    if not (0 <= next_r < self.height and 0 <= next_c < self.width) or \
+                       self.solution_grid[self.get_index(next_c, next_r)] == '.':
+                        break # End of word
+                        
+                    idx_next = self.get_index(next_c, next_r)
+                    if self.user_grid[idx_next] in ['-', '.']:
+                        self.cursor_row = next_r
+                        self.cursor_col = next_c
+                        found_empty = True
+                        break
+                    
+                    temp_r, temp_c = next_r, next_c
+                
+                if found_empty:
+                    self.refresh_grid()
+                    self.update_clue_display()
+                else:
+                    # Entire word is filled. Recursively jump to NEXT word.
+                    new_idx = self.get_index(self.cursor_col, self.cursor_row)
+                    if new_idx not in visited_indices:
+                        visited_indices.add(new_idx)
+                        self.jump_to_next_word(visited_indices)
             
     def on_click(self, event):
         if not self.puzzle: return

@@ -5,7 +5,7 @@ import puz
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - Stable v3.0")
+        self.root.title("Python .puz Solver - v3.1")
         self.root.geometry("1000x700")
 
         # Game State
@@ -97,11 +97,9 @@ class CrosswordApp:
         self.width = self.puzzle.width
         self.height = self.puzzle.height
         
-        # Load Raw Data
         self.solution_grid = list(self.puzzle.solution)
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
-        # Calculate sizing
         max_h = 600
         self.cell_size = min(40, max_h // self.height)
         self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
@@ -178,7 +176,6 @@ class CrosswordApp:
 
                 if cell_val not in ['-', '.']:
                     text_color = "black"
-                    # Simple Error Check Visual
                     if self.var_error_check.get():
                         if cell_val != sol_val:
                             text_color = "red"
@@ -213,7 +210,6 @@ class CrosswordApp:
         
         key = event.keysym
         
-        # Simple blocking of Modifier keys so they don't print
         if "Control" in key or "Alt" in key or "Shift" in key:
             return
 
@@ -236,18 +232,12 @@ class CrosswordApp:
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            correct_char = self.solution_grid[idx]
             
             self.user_grid[idx] = char
             self.refresh_grid()
 
-            # Logic: Move Cursor
-            if self.var_error_check.get():
-                # If error check ON: only move if correct
-                if char == correct_char:
-                    self.step_forward()
-            else:
-                self.step_forward()
+            # ALWAYS move forward, regardless of error check mode
+            self.step_forward()
         
         return "break"
 
@@ -284,32 +274,52 @@ class CrosswordApp:
     def jump_to_next_word(self):
         if not self.puzzle: return
         
+        # 1. Determine Current Context
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         
+        # Find start of current word to match clue mapping
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
             while c >= 0 and self.solution_grid[self.get_index(c, self.cursor_row)] != '.':
                 start_idx = self.get_index(c, self.cursor_row)
                 c -= 1
+            current_list = self.clue_mapping.across
+            next_list = self.clue_mapping.down
+            next_direction = 'down'
         else: 
             r = self.cursor_row
             while r >= 0 and self.solution_grid[self.get_index(self.cursor_col, r)] != '.':
                 start_idx = self.get_index(self.cursor_col, r)
                 r -= 1
+            current_list = self.clue_mapping.down
+            next_list = self.clue_mapping.across
+            next_direction = 'across'
 
-        target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
-        
-        next_clue = None
-        for i, clue in enumerate(target_list):
+        # 2. Find Index of Current Clue in the List
+        current_clue_index = -1
+        for i, clue in enumerate(current_list):
             if clue['cell'] == start_idx:
-                next_index = (i + 1) % len(target_list)
-                next_clue = target_list[next_index]
+                current_clue_index = i
                 break
         
-        if next_clue is None and len(target_list) > 0:
-            next_clue = target_list[0]
+        # 3. Determine Next Clue (with list switching)
+        next_clue = None
+        
+        if current_clue_index != -1 and current_clue_index < len(current_list) - 1:
+            # Just go to next clue in same list
+            next_clue = current_list[current_clue_index + 1]
+        else:
+            # We are at the end of the current list (or lost), switch lists!
+            if len(next_list) > 0:
+                next_clue = next_list[0]
+                self.direction = next_direction # Switch direction!
+            else:
+                # Fallback: loop back to start of current list
+                if len(current_list) > 0:
+                    next_clue = current_list[0]
 
+        # 4. Execute Move
         if next_clue:
             self.cursor_row = next_clue['cell'] // self.width
             self.cursor_col = next_clue['cell'] % self.width

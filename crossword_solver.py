@@ -2,11 +2,13 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz
 import os
+import re
+import html
 
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v5.5")
+        self.root.title("Python .puz Solver - v6.0")
         self.root.geometry("1200x750")
 
         # Game State
@@ -25,10 +27,10 @@ class CrosswordApp:
         self.cursor_row = 0
         self.direction = 'across'
         
-        # Settings Variables
-        self.var_error_check = tk.BooleanVar(value=False)
-        self.var_ctrl_reveal = tk.BooleanVar(value=True)
-        self.var_skip_filled = tk.BooleanVar(value=False)
+        # Settings Variables (Defaults CHANGED to True)
+        self.var_error_check = tk.BooleanVar(value=True)  # Default ON
+        self.var_ctrl_reveal = tk.BooleanVar(value=True)  # Default ON
+        self.var_skip_filled = tk.BooleanVar(value=True)  # Default ON
         self.var_end_behavior = tk.StringVar(value="next") # "stay" or "next"
         self.cell_size = 35 
         
@@ -140,7 +142,8 @@ class CrosswordApp:
         # Config Tags
         for txt in [self.txt_across, self.txt_down]:
             txt.tag_config("highlight", background="#E1F5FE") 
-            txt.tag_config("default", background="white")
+            txt.tag_config("completed", foreground="#999999") # Gray for filled
+            txt.tag_config("default", background="white", foreground="black")
 
         # Initial Layout
         self.main_paned.add(self.game_paned)
@@ -153,6 +156,15 @@ class CrosswordApp:
         self.root.bind("<Tab>", lambda e: self.jump_to_next_word())
         self.root.bind("<Control_L>", self.reveal_current_letter)
         self.root.bind("<Control_R>", self.reveal_current_letter)
+
+    def clean_clue_text(self, text):
+        """Remove HTML tags and decode entities"""
+        if not text: return ""
+        # Remove tags like <i>, <b>, </i>
+        text = re.sub(r'<[^>]+>', '', text)
+        # Decode entities like &quot;
+        text = html.unescape(text)
+        return text
 
     def browse_file(self):
         filename = filedialog.askopenfilename(filetypes=[("Puzzle Files", "*.puz"), ("All Files", "*.*")])
@@ -253,8 +265,10 @@ class CrosswordApp:
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
+            
+            clean_text = self.clean_clue_text(clue['clue'])
             tag = f"across_{clue['num']}"
-            self.txt_across.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
+            self.txt_across.insert(tk.END, f"{clue['num']}. {clean_text}\n", tag)
             self.txt_across.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'across'))
         self.txt_across.config(state=tk.DISABLED)
 
@@ -264,8 +278,10 @@ class CrosswordApp:
             r = clue['cell'] // self.width
             c = clue['cell'] % self.width
             self.grid_numbers[(c, r)] = clue['num']
+            
+            clean_text = self.clean_clue_text(clue['clue'])
             tag = f"down_{clue['num']}"
-            self.txt_down.insert(tk.END, f"{clue['num']}. {clue['clue']}\n", tag)
+            self.txt_down.insert(tk.END, f"{clue['num']}. {clean_text}\n", tag)
             self.txt_down.tag_bind(tag, "<Button-1>", lambda e, num=clue['num']: self.click_clue_text(num, 'down'))
         self.txt_down.config(state=tk.DISABLED)
 
@@ -295,7 +311,6 @@ class CrosswordApp:
         self.canvas.delete("all")
         
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
-        # Updated: Weight is now NORMAL (Thin letters)
         fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="normal")
 
         for r in range(self.height):
@@ -330,6 +345,53 @@ class CrosswordApp:
                     
                     self.canvas.create_text(x1 + self.cell_size/2, y1 + self.cell_size/2 + 2, 
                                             text=cell_val, font=fnt_char, fill=text_color)
+        
+        # Check for completed words to gray them out
+        self.check_completed_clues()
+
+    def check_completed_clues(self):
+        """Gray out clues that are fully filled"""
+        
+        def check_list(clue_list, direction):
+            txt_widget = self.txt_across if direction == 'across' else self.txt_down
+            
+            # Temporary enable to edit tags
+            # (Tags can be added even if disabled, but safer to follow pattern)
+            
+            for clue in clue_list:
+                # Find cells for this clue
+                start_cell = clue['cell']
+                r = start_cell // self.width
+                c = start_cell % self.width
+                
+                is_filled = True
+                
+                # Iterate cells in word
+                curr_r, curr_c = r, c
+                while 0 <= curr_r < self.height and 0 <= curr_c < self.width:
+                    idx = self.get_index(curr_c, curr_r)
+                    if self.solution_grid[idx] == '.': break
+                    
+                    if self.user_grid[idx] in ['-', '.']:
+                        is_filled = False
+                        break
+                    
+                    if direction == 'across': curr_c += 1
+                    else: curr_r += 1
+                
+                # Apply/Remove Tag
+                tag_name = f"{direction}_{clue['num']}"
+                if is_filled:
+                    ranges = txt_widget.tag_ranges(tag_name)
+                    if ranges:
+                        txt_widget.tag_add("completed", ranges[0], ranges[1])
+                else:
+                    ranges = txt_widget.tag_ranges(tag_name)
+                    if ranges:
+                        txt_widget.tag_remove("completed", ranges[0], ranges[1])
+
+        check_list(self.clue_mapping.across, 'across')
+        check_list(self.clue_mapping.down, 'down')
 
     def is_highlighted(self, col, row):
         if self.solution_grid[self.get_index(col, row)] == '.': return False
@@ -484,15 +546,10 @@ class CrosswordApp:
                 return
 
     def jump_to_next_word(self, visited_indices=None):
-        """Find start of next word, then slide if filled/skip enabled"""
         if not self.puzzle: return
-        
-        # Prevent infinite recursion if grid is completely full
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
-        if visited_indices is None:
-            visited_indices = {current_idx}
+        if visited_indices is None: visited_indices = {current_idx}
         
-        # 1. Determine Next Word Start
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -528,47 +585,35 @@ class CrosswordApp:
                 if len(current_list) > 0:
                     next_clue = current_list[0]
 
-        # 2. Move to new word start
         if next_clue:
             self.cursor_row = next_clue['cell'] // self.width
             self.cursor_col = next_clue['cell'] % self.width
             self.refresh_grid()
             self.update_clue_display()
             
-            # 3. Handle Skip Filled
             if self.var_skip_filled.get():
                 dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
                 temp_r, temp_c = self.cursor_row, self.cursor_col
-                
-                # Check current cell first
                 idx = self.get_index(temp_c, temp_r)
-                if self.user_grid[idx] in ['-', '.']:
-                    return # Start is empty, stay here
+                if self.user_grid[idx] in ['-', '.']: return
                 
-                # Start is filled, look ahead in this word
                 found_empty = False
                 while True:
                     next_r, next_c = temp_r + dr, temp_c + dc
-                    
-                    # Check if hit block/wall
                     if not (0 <= next_r < self.height and 0 <= next_c < self.width) or \
-                       self.solution_grid[self.get_index(next_c, next_r)] == '.':
-                        break # End of word
-                        
+                       self.solution_grid[self.get_index(next_c, next_r)] == '.': break
                     idx_next = self.get_index(next_c, next_r)
                     if self.user_grid[idx_next] in ['-', '.']:
                         self.cursor_row = next_r
                         self.cursor_col = next_c
                         found_empty = True
                         break
-                    
                     temp_r, temp_c = next_r, next_c
                 
                 if found_empty:
                     self.refresh_grid()
                     self.update_clue_display()
                 else:
-                    # Entire word is filled. Recursively jump to NEXT word.
                     new_idx = self.get_index(self.cursor_col, self.cursor_row)
                     if new_idx not in visited_indices:
                         visited_indices.add(new_idx)
@@ -607,7 +652,7 @@ class CrosswordApp:
         clue_num = -1
         for clue in target_list:
             if clue['cell'] == start_idx:
-                found_clue = f"{clue['num']}. {clue['clue']}"
+                found_clue = f"{clue['num']}. {self.clean_clue_text(clue['clue'])}"
                 clue_num = clue['num']
                 break
         

@@ -1,34 +1,3 @@
-Here is Version 5.0 with the requested improvements.
-
-New Features in v5.0:
-
-Smart Navigation (Arrow Keys):
-
-Right Arrow: Now jumps over black squares automatically. If you press it enough times, it wraps to the next line/word (e.g., from 4-Across to 9-Across).
-
-Left Arrow: Jumps back over black squares and wraps to the previous line.
-
-Backspace: Moves back (skipping black squares) and deletes the letter there.
-
-Skip Filled Letters:
-
-Added a new option in the menu: "Skip Filled Squares".
-
-When enabled, typing a letter will automatically jump the cursor over any squares that are already filled, landing on the next empty one.
-
-Sidebar Focus Fix:
-
-Clicking a file in the sidebar now automatically returns focus to the crossword grid. You can immediately start typing or using arrow keys without clicking the grid again.
-
-The Code (v5.0)
-
-Copy this entire block and overwrite your file on GitHub.
-
-code
-Python
-download
-content_copy
-expand_less
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz

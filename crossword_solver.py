@@ -4,11 +4,12 @@ import puz
 import os
 import re
 import html
+import json
 
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v8.0")
+        self.root.title("Python .puz Solver - v9.0")
         self.root.geometry("1200x750")
 
         # Game State
@@ -22,6 +23,10 @@ class CrosswordApp:
         self.is_redacted = False
         self.current_file_path = ""
         
+        # Favorites Persistence
+        self.favorites_file = "favorites.json"
+        self.favorites = self.load_favorites()
+
         # Navigation State
         self.cursor_col = 0
         self.cursor_row = 0
@@ -34,7 +39,9 @@ class CrosswordApp:
         self.var_end_behavior = tk.StringVar(value="next")
         self.var_dark_theme = tk.BooleanVar(value=True)
         
+        # Visual Settings
         self.cell_size = 35 
+        self.clue_font_size = 10 # Base font size for text panels
         self.sidebar_visible = False
         
         self.c = {} 
@@ -78,15 +85,24 @@ class CrosswordApp:
         self.top_frame = tk.Frame(self.root, pady=8, padx=10, relief=tk.RIDGE, borderwidth=1)
         self.top_frame.pack(side=tk.TOP, fill=tk.X)
         
-        # Sidebar Button
         self.btn_sidebar = tk.Button(self.top_frame, text="📂 Files", command=self.toggle_sidebar, relief=tk.GROOVE)
         self.btn_sidebar.pack(side=tk.LEFT, padx=(0, 15))
 
         self.lbl_filename = tk.Label(self.top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"))
         self.lbl_filename.pack(side=tk.LEFT)
+        
+        # Zoom Controls
+        self.btn_zoom_out = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_zoom(-1), font=("Arial", 10, "bold"))
+        self.btn_zoom_out.pack(side=tk.RIGHT, padx=5)
+        
+        self.btn_zoom_in = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_zoom(1), font=("Arial", 10, "bold"))
+        self.btn_zoom_in.pack(side=tk.RIGHT, padx=5)
+        
+        self.lbl_zoom = tk.Label(self.top_frame, text="Zoom", font=("Arial", 10))
+        self.lbl_zoom.pack(side=tk.RIGHT)
 
         self.lbl_current_clue = tk.Label(self.top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=600)
-        self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=10)
+        self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=15)
 
         # Resizable Layout
         self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6)
@@ -100,6 +116,16 @@ class CrosswordApp:
         self.file_listbox = tk.Listbox(self.sidebar_frame, font=("Arial", 9), borderwidth=0)
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
+        
+        # Context Menu for Sidebar
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="⭐ Add/Remove Favorite", command=self.toggle_favorite)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="🗑️ Delete File", command=self.delete_file)
+        
+        self.file_listbox.bind("<Button-3>", self.show_context_menu) # Right click
+        # Fix 1: Stop spacebar from acting on listbox
+        self.file_listbox.bind("<space>", self.block_listbox_space) 
         
         # Game Area
         self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6)
@@ -122,7 +148,7 @@ class CrosswordApp:
         sb_across = tk.Scrollbar(frame_across)
         sb_across.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.txt_across = tk.Text(frame_across, wrap=tk.WORD, font=("Arial", 10), 
+        self.txt_across = tk.Text(frame_across, wrap=tk.WORD, 
                                   state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_across.set, height=10)
         self.txt_across.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_across.config(command=self.txt_across.yview)
@@ -137,7 +163,7 @@ class CrosswordApp:
         sb_down = tk.Scrollbar(frame_down)
         sb_down.pack(side=tk.RIGHT, fill=tk.Y)
         
-        self.txt_down = tk.Text(frame_down, wrap=tk.WORD, font=("Arial", 10), 
+        self.txt_down = tk.Text(frame_down, wrap=tk.WORD, 
                                 state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_down.set, height=10)
         self.txt_down.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_down.config(command=self.txt_down.yview)
@@ -157,26 +183,108 @@ class CrosswordApp:
         # Apply Theme Immediately
         self.apply_theme()
 
+    # --- Persistence ---
+    def load_favorites(self):
+        if os.path.exists(self.favorites_file):
+            try:
+                with open(self.favorites_file, 'r') as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+
+    def save_favorites(self):
+        with open(self.favorites_file, 'w') as f:
+            json.dump(self.favorites, f)
+
+    def block_listbox_space(self, event):
+        """Prevents spacebar from selecting list items and forces focus to canvas"""
+        self.canvas.focus_set() # Force focus back to game
+        # We can also manually trigger direction toggle here if desired:
+        self.direction = 'down' if self.direction == 'across' else 'across'
+        self.refresh_grid()
+        self.update_clue_display()
+        return "break"
+
+    def show_context_menu(self, event):
+        # Select the item under mouse
+        try:
+            self.file_listbox.selection_clear(0, tk.END)
+            self.file_listbox.selection_set(self.file_listbox.nearest(event.y))
+            self.file_listbox.activate(self.file_listbox.nearest(event.y))
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+
+    def get_selected_file_path(self):
+        selection = self.file_listbox.curselection()
+        if not selection: return None
+        filename = self.file_listbox.get(selection[0])
+        # Strip star if present
+        if filename.startswith("⭐ "):
+            filename = filename.replace("⭐ ", "")
+        
+        # We need the directory. If a file is loaded, use that dir.
+        if self.current_file_path:
+            return os.path.join(os.path.dirname(self.current_file_path), filename)
+        return None
+
+    def toggle_favorite(self):
+        path = self.get_selected_file_path()
+        if not path: return
+        
+        # Normalize path for storage
+        path = os.path.abspath(path)
+        
+        if path in self.favorites:
+            self.favorites.remove(path)
+        else:
+            self.favorites.append(path)
+        
+        self.save_favorites()
+        # Refresh sidebar
+        if self.current_file_path:
+            self.update_sidebar(os.path.dirname(self.current_file_path))
+
+    def delete_file(self):
+        path = self.get_selected_file_path()
+        if not path: return
+        
+        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to permanently delete:\n{os.path.basename(path)}?"):
+            try:
+                os.remove(path)
+                # Remove from favorites if there
+                abs_path = os.path.abspath(path)
+                if abs_path in self.favorites:
+                    self.favorites.remove(abs_path)
+                    self.save_favorites()
+                
+                if self.current_file_path:
+                    self.update_sidebar(os.path.dirname(self.current_file_path))
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not delete file: {e}")
+
+    # --- Zoom & Theme ---
     def define_colors(self):
         if self.var_dark_theme.get():
-            # DARK THEME (NYT Style)
             self.c = {
-                'bg': '#333333',          # Very dark background
-                'fg': 'white',          # Off-white text
-                'panel_bg': '#333333',    # Dark panels
-                'input_bg': '#333333',    # Matching text areas
-                'grid_bg': '#757575',     # Medium Gray squares (Empty)
-                'grid_fg': '#FFFFFF',     # White letters
-                'grid_num': '#E0E0E0',    # Light numbers
-                'black_sq': '#333333',      # Black squares
-                'cursor': '#d19e44',      # Muted Gold (Active Square)
-                'highlight': '#569fc9',   # Slate Blue (Word Highlight)
-                'error': '#FF5555',       # Bright Red
-                'sash': '#444444',        # Separators
-                'completed': '#888888'    # Dimmed text
+                'bg': '#333333',
+                'fg': 'white',
+                'panel_bg': '#333333',
+                'input_bg': '#333333',
+                'grid_bg': '#757575',
+                'grid_fg': '#FFFFFF',
+                'grid_num': '#E0E0E0',
+                'black_sq': '#333333',
+                'cursor': '#d19e44',
+                'highlight': '#569fc9',
+                'error': '#FF5555',
+                'sash': '#444444',
+                'completed': '#888888',
+                'btn_bg': '#444444',
+                'btn_fg': 'white'
             }
         else:
-            # LIGHT THEME
             self.c = {
                 'bg': 'white',
                 'fg': 'black',
@@ -186,11 +294,13 @@ class CrosswordApp:
                 'grid_fg': 'black',
                 'grid_num': '#222222',
                 'black_sq': 'black',
-                'cursor': '#FFEB3B',    # Yellow
-                'highlight': '#E1F5FE', # Light Blue
+                'cursor': '#FFEB3B',
+                'highlight': '#E1F5FE',
                 'error': 'red',
                 'sash': '#cccccc',
-                'completed': '#999999'
+                'completed': '#999999',
+                'btn_bg': '#e9ecef',
+                'btn_fg': 'black'
             }
 
     def apply_theme(self):
@@ -206,25 +316,42 @@ class CrosswordApp:
         self.sidebar_label.config(bg=c['input_bg'], fg=c['fg'])
         self.file_listbox.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], selectforeground=c['fg'])
         
-        labels = [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down]
+        labels = [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down, self.lbl_zoom]
         for lbl in labels:
             lbl.config(bg=c['panel_bg'], fg=c['fg'])
             
-        self.btn_sidebar.config(bg=c['input_bg'], fg=c['fg'])
+        btns = [self.btn_sidebar, self.btn_zoom_in, self.btn_zoom_out]
+        for btn in btns:
+            btn.config(bg=c['btn_bg'], fg=c['btn_fg'])
 
         self.grid_frame.config(bg=c['bg'])
         self.canvas.config(bg=c['bg'])
         
         self.clues_frame.config(bg=c['bg'])
         
+        # Apply font size to text widgets
+        clue_font = ("Arial", self.clue_font_size)
+        
         for txt in [self.txt_across, self.txt_down]:
-            txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'])
+            txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], font=clue_font)
             txt.tag_config("highlight", background=c['highlight'])
             txt.tag_config("completed", foreground=c['completed'])
             txt.tag_config("default", background=c['input_bg'], foreground=c['fg'])
             
         self.refresh_grid()
         self.update_clue_display()
+
+    def change_zoom(self, delta):
+        # Limit zoom
+        new_cell = self.cell_size + (delta * 5)
+        new_font = self.clue_font_size + delta
+        
+        if 20 <= new_cell <= 100:
+            self.cell_size = new_cell
+        if 8 <= new_font <= 24:
+            self.clue_font_size = new_font
+            
+        self.apply_theme() # Re-applies font sizes and redraws grid
 
     def clean_clue_text(self, text):
         if not text: return ""
@@ -265,8 +392,8 @@ class CrosswordApp:
 
         self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
-        max_h = 600
-        self.cell_size = min(40, max_h // self.height)
+        # Recalculate grid size based on puzzle dimensions but keep user zoom preference
+        # We verify if the current cell_size fits, if not we might scale down, but for now strict zoom is better.
         self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
 
         self.parse_clues()
@@ -287,15 +414,22 @@ class CrosswordApp:
         try:
             files = [f for f in os.listdir(folder_path) if f.lower().endswith('.puz')]
             files.sort()
+            
             for f in files:
-                self.file_listbox.insert(tk.END, f)
+                full_p = os.path.abspath(os.path.join(folder_path, f))
+                display_name = f
+                if full_p in self.favorites:
+                    display_name = "⭐ " + f
+                self.file_listbox.insert(tk.END, display_name)
+                
             current_name = os.path.basename(self.current_file_path)
-            try:
-                idx = files.index(current_name)
-                self.file_listbox.selection_set(idx)
-                self.file_listbox.see(idx)
-            except ValueError:
-                pass
+            # Find index handling the star
+            for i in range(self.file_listbox.size()):
+                item = self.file_listbox.get(i)
+                if item == current_name or item == "⭐ " + current_name:
+                    self.file_listbox.selection_set(i)
+                    self.file_listbox.see(i)
+                    break
         except Exception:
             pass
 
@@ -314,6 +448,9 @@ class CrosswordApp:
         if not selection: return
         
         filename = self.file_listbox.get(selection[0])
+        if filename.startswith("⭐ "):
+            filename = filename.replace("⭐ ", "")
+            
         full_path = os.path.join(os.path.dirname(self.current_file_path), filename)
         
         if full_path != self.current_file_path:
@@ -376,6 +513,10 @@ class CrosswordApp:
         if not self.puzzle: return
         self.canvas.delete("all")
         
+        # Ensure canvas is big enough for zoom
+        self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+
         c = self.c 
         fnt_num = font.Font(family="Arial", size=int(self.cell_size*0.28))
         fnt_char = font.Font(family="Helvetica", size=int(self.cell_size*0.55), weight="normal")

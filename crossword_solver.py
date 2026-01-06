@@ -272,7 +272,7 @@ class CrosswordApp:
                 'grid_num': '#E0E0E0',
                 'black_sq': '#333333',
                 'cursor': '#d19e44',
-                'highlight': '#72767B',
+                'highlight': '#506880',
                 'error': '#FF5555',
                 'sash': '#444444',
                 'completed': '#888888',

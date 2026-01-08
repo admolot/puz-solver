@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v11.0")
+        self.root.title("Python .puz Solver - v11.1")
         self.root.geometry("1200x750")
 
         # Game State
@@ -92,15 +92,16 @@ class CrosswordApp:
         self.lbl_filename.pack(side=tk.LEFT)
         
         # Zoom Controls
-        self.btn_text_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_text_zoom(1), font=("Arial", 9, "bold"), width=2)
+        # Note: Added takefocus=0 to buttons to prevent Tab from selecting them
+        self.btn_text_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_text_zoom(1), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_text_plus.pack(side=tk.RIGHT, padx=2)
-        self.btn_text_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_text_zoom(-1), font=("Arial", 9, "bold"), width=2)
+        self.btn_text_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_text_zoom(-1), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_text_minus.pack(side=tk.RIGHT, padx=2)
         tk.Label(self.top_frame, text="Text:", font=("Arial", 10)).pack(side=tk.RIGHT, padx=(10, 2))
 
-        self.btn_grid_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_grid_zoom(5), font=("Arial", 9, "bold"), width=2)
+        self.btn_grid_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_grid_zoom(5), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_grid_plus.pack(side=tk.RIGHT, padx=2)
-        self.btn_grid_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_grid_zoom(-5), font=("Arial", 9, "bold"), width=2)
+        self.btn_grid_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_grid_zoom(-5), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_grid_minus.pack(side=tk.RIGHT, padx=2)
         tk.Label(self.top_frame, text="Grid:", font=("Arial", 10)).pack(side=tk.RIGHT, padx=(10, 2))
 
@@ -179,15 +180,27 @@ class CrosswordApp:
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
         
-        # Tab Navigation
-        self.root.bind("<Tab>", lambda e: self.jump_to_next_word(forward=True))
-        self.root.bind("<Shift-Tab>", lambda e: self.jump_to_next_word(forward=False))
+        # Tab Navigation - Explicit functions to return 'break'
+        self.root.bind("<Tab>", self.handle_tab)
+        self.root.bind("<Shift-Tab>", self.handle_shift_tab)
         
         self.root.bind("<Control_L>", self.reveal_current_letter)
         self.root.bind("<Control_R>", self.reveal_current_letter)
+        
+        # Catch-all click to refocus game if user clicks background
+        self.root.bind("<Button-1>", lambda e: self.canvas.focus_set())
 
         # Apply Theme Immediately
         self.apply_theme()
+
+    # --- Tab Handlers (Fix for focus stealing) ---
+    def handle_tab(self, event):
+        self.jump_to_next_word(forward=True)
+        return "break" # Stops Tkinter from moving focus to buttons
+
+    def handle_shift_tab(self, event):
+        self.jump_to_next_word(forward=False)
+        return "break" # Stops Tkinter from moving focus to buttons
 
     # --- Persistence ---
     def load_favorites(self):
@@ -585,7 +598,6 @@ class CrosswordApp:
             return start_r <= row <= end_r
 
     def is_locked(self, idx):
-        """Check if cell is correct and error check mode is ON (prevents editing)"""
         return self.var_error_check.get() and not self.is_redacted and \
                self.user_grid[idx] == self.solution_grid[idx]
 
@@ -610,23 +622,17 @@ class CrosswordApp:
             self.update_clue_display()
         elif key == "BackSpace":
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            # Only delete if not locked
             if not self.is_locked(idx):
                 self.user_grid[idx] = '-'
-            
-            # Move back
             if self.direction == 'across': self.move_smart(0, -1)
             else: self.move_smart(-1, 0)
             self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            
-            # Only update if not locked
             if not self.is_locked(idx):
                 self.user_grid[idx] = char
                 self.refresh_grid()
-            
             self.step_forward()
         return "break"
 

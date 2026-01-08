@@ -9,8 +9,11 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v11.1")
+        self.root.title("Python .puz Solver - v13.0")
         self.root.geometry("1200x750")
+        
+        # Handle Window Close Event to Save
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Game State
         self.puzzle = None
@@ -23,26 +26,36 @@ class CrosswordApp:
         self.is_redacted = False
         self.current_file_path = ""
         
-        # Favorites Persistence
+        # Files
         self.favorites_file = "favorites.json"
-        self.favorites = self.load_favorites()
+        self.settings_file = "settings.json"
+        self.saves_file = "saves.json"
+        
+        # Load Data
+        self.favorites = self.load_json(self.favorites_file, [])
+        self.game_saves = self.load_json(self.saves_file, {})
 
         # Navigation State
         self.cursor_col = 0
         self.cursor_row = 0
         self.direction = 'across'
         
-        # Settings Variables
+        # --- Settings Variables ---
         self.var_error_check = tk.BooleanVar(value=True)
-        self.var_ctrl_reveal = tk.BooleanVar(value=True)
         self.var_skip_filled = tk.BooleanVar(value=True)
         self.var_end_behavior = tk.StringVar(value="next")
         self.var_dark_theme = tk.BooleanVar(value=True)
+        self.var_ctrl_mode = tk.StringVar(value="letter") 
+        self.var_ctrl_reveal = tk.BooleanVar(value=True) # Added missing var init
         
         # Visual Settings
         self.cell_size = 35 
         self.clue_font_size = 10 
         self.sidebar_visible = False
+        self.last_opened_file = ""
+        
+        # Load User Settings
+        self.load_settings()
         
         self.c = {} 
 
@@ -55,28 +68,34 @@ class CrosswordApp:
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Open .puz File", command=self.browse_file)
         file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=root.quit)
+        file_menu.add_command(label="Exit", command=self.on_close)
         menubar.add_cascade(label="File", menu=file_menu)
         
         # Reveal Menu
         self.reveal_menu = tk.Menu(menubar, tearoff=0)
         self.reveal_menu.add_command(label="Reveal Current Word", command=self.reveal_current_word)
+        self.reveal_menu.add_command(label="Reveal Puzzle", command=self.reveal_puzzle)
         menubar.add_cascade(label="Reveal", menu=self.reveal_menu)
         
         # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
         options_menu.add_checkbutton(label="Dark Theme", onvalue=True, offvalue=False,
-                                     variable=self.var_dark_theme, command=self.apply_theme)
+                                     variable=self.var_dark_theme, command=self.apply_theme_and_save)
         options_menu.add_separator()
         options_menu.add_checkbutton(label="Error Check Mode", onvalue=True, offvalue=False, 
-                                     variable=self.var_error_check, command=self.refresh_grid)
-        options_menu.add_checkbutton(label="Enable 'Ctrl' to Reveal Letter", onvalue=True, offvalue=False, 
-                                     variable=self.var_ctrl_reveal)
+                                     variable=self.var_error_check, command=self.save_settings_trigger)
         options_menu.add_checkbutton(label="Skip Filled Squares", onvalue=True, offvalue=False, 
-                                     variable=self.var_skip_filled)
+                                     variable=self.var_skip_filled, command=self.save_settings_trigger)
+        
+        # Ctrl Behavior Submenu
+        ctrl_menu = tk.Menu(options_menu, tearoff=0)
+        ctrl_menu.add_radiobutton(label="Reveal Letter", value="letter", variable=self.var_ctrl_mode, command=self.save_settings)
+        ctrl_menu.add_radiobutton(label="Reveal Word", value="word", variable=self.var_ctrl_mode, command=self.save_settings)
+        options_menu.add_cascade(label="Ctrl Key Behavior", menu=ctrl_menu)
+
         options_menu.add_separator()
-        options_menu.add_radiobutton(label="At end of word: Jump to Next", value="next", variable=self.var_end_behavior)
-        options_menu.add_radiobutton(label="At end of word: Stay", value="stay", variable=self.var_end_behavior)
+        options_menu.add_radiobutton(label="At end of word: Jump to Next", value="next", variable=self.var_end_behavior, command=self.save_settings)
+        options_menu.add_radiobutton(label="At end of word: Stay", value="stay", variable=self.var_end_behavior, command=self.save_settings)
         
         menubar.add_cascade(label="Options", menu=options_menu)
         self.root.config(menu=menubar)
@@ -92,7 +111,6 @@ class CrosswordApp:
         self.lbl_filename.pack(side=tk.LEFT)
         
         # Zoom Controls
-        # Note: Added takefocus=0 to buttons to prevent Tab from selecting them
         self.btn_text_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_text_zoom(1), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_text_plus.pack(side=tk.RIGHT, padx=2)
         self.btn_text_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_text_zoom(-1), font=("Arial", 9, "bold"), width=2, takefocus=0)
@@ -121,7 +139,7 @@ class CrosswordApp:
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
         
-        # Context Menu for Sidebar
+        # Context Menu
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="⭐ Add/Remove Favorite", command=self.toggle_favorite)
         self.context_menu.add_separator()
@@ -180,41 +198,106 @@ class CrosswordApp:
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
         
-        # Tab Navigation - Explicit functions to return 'break'
         self.root.bind("<Tab>", self.handle_tab)
         self.root.bind("<Shift-Tab>", self.handle_shift_tab)
         
-        self.root.bind("<Control_L>", self.reveal_current_letter)
-        self.root.bind("<Control_R>", self.reveal_current_letter)
+        self.root.bind("<Control_L>", self.handle_ctrl_key)
+        self.root.bind("<Control_R>", self.handle_ctrl_key)
         
-        # Catch-all click to refocus game if user clicks background
         self.root.bind("<Button-1>", lambda e: self.canvas.focus_set())
 
-        # Apply Theme Immediately
+        # Apply Theme
         self.apply_theme()
+        
+        # Load Last Opened File
+        if self.last_opened_file and os.path.exists(self.last_opened_file):
+            self.load_puz_file(self.last_opened_file)
 
-    # --- Tab Handlers (Fix for focus stealing) ---
+    # --- Persistence ---
+    def load_json(self, filepath, default):
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, 'r') as f:
+                    return json.load(f)
+            except:
+                return default
+        return default
+
+    def save_json(self, filepath, data):
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data, f)
+        except:
+            pass
+
+    def on_close(self):
+        # Save current puzzle state
+        self.save_current_progress()
+        # Save settings (including last opened file)
+        self.save_settings()
+        self.root.destroy()
+
+    def save_current_progress(self):
+        if self.puzzle and self.current_file_path:
+            self.game_saves[self.current_file_path] = self.user_grid
+            self.save_json(self.saves_file, self.game_saves)
+
+    def load_settings(self):
+        data = self.load_json(self.settings_file, {})
+        if not data: return
+        
+        self.var_dark_theme.set(data.get("dark_theme", True))
+        self.var_error_check.set(data.get("error_check", True))
+        self.var_ctrl_mode.set(data.get("ctrl_mode", "letter"))
+        self.var_skip_filled.set(data.get("skip_filled", True))
+        self.var_end_behavior.set(data.get("end_behavior", "next"))
+        self.cell_size = data.get("cell_size", 35)
+        self.clue_font_size = data.get("clue_font_size", 10)
+        self.last_opened_file = data.get("last_file", "")
+        
+        geom = data.get("geometry", "1200x750")
+        try: self.root.geometry(geom)
+        except: pass
+
+    def save_settings(self):
+        data = {
+            "dark_theme": self.var_dark_theme.get(),
+            "error_check": self.var_error_check.get(),
+            "ctrl_mode": self.var_ctrl_mode.get(),
+            "skip_filled": self.var_skip_filled.get(),
+            "end_behavior": self.var_end_behavior.get(),
+            "cell_size": self.cell_size,
+            "clue_font_size": self.clue_font_size,
+            "geometry": self.root.geometry(),
+            "last_file": self.current_file_path
+        }
+        self.save_json(self.settings_file, data)
+
+    def save_settings_trigger(self):
+        self.refresh_grid()
+        self.save_settings()
+
+    def apply_theme_and_save(self):
+        self.apply_theme()
+        self.save_settings()
+
+    # --- Handlers ---
     def handle_tab(self, event):
         self.jump_to_next_word(forward=True)
-        return "break" # Stops Tkinter from moving focus to buttons
+        return "break"
 
     def handle_shift_tab(self, event):
         self.jump_to_next_word(forward=False)
-        return "break" # Stops Tkinter from moving focus to buttons
+        return "break"
 
-    # --- Persistence ---
-    def load_favorites(self):
-        if os.path.exists(self.favorites_file):
-            try:
-                with open(self.favorites_file, 'r') as f:
-                    return json.load(f)
-            except:
-                return []
-        return []
-
-    def save_favorites(self):
-        with open(self.favorites_file, 'w') as f:
-            json.dump(self.favorites, f)
+    def handle_ctrl_key(self, event):
+        if self.var_ctrl_mode.get() == "word":
+            self.reveal_current_word()
+            if self.var_end_behavior.get() == "next":
+                self.jump_to_next_word(forward=True)
+        else:
+            self.reveal_current_letter(event)
+        return "break"
 
     def block_listbox_space(self, event):
         self.canvas.focus_set()
@@ -250,7 +333,7 @@ class CrosswordApp:
             self.favorites.remove(path)
         else:
             self.favorites.append(path)
-        self.save_favorites()
+        self.save_json(self.favorites_file, self.favorites)
         if self.current_file_path:
             self.update_sidebar(os.path.dirname(self.current_file_path))
 
@@ -263,7 +346,7 @@ class CrosswordApp:
                 abs_path = os.path.abspath(path)
                 if abs_path in self.favorites:
                     self.favorites.remove(abs_path)
-                    self.save_favorites()
+                    self.save_json(self.favorites_file, self.favorites)
                 if self.current_file_path:
                     self.update_sidebar(os.path.dirname(self.current_file_path))
             except Exception as e:
@@ -286,6 +369,7 @@ class CrosswordApp:
                 'error': '#FF5555',
                 'sash': '#444444',
                 'completed': '#888888',
+                'ref': '#A480CF',
                 'btn_bg': '#444444',
                 'btn_fg': 'white'
             }
@@ -304,6 +388,7 @@ class CrosswordApp:
                 'error': 'red',
                 'sash': '#cccccc',
                 'completed': '#999999',
+                'ref': '#673AB7',
                 'btn_bg': '#e9ecef',
                 'btn_fg': 'black'
             }
@@ -339,6 +424,7 @@ class CrosswordApp:
             txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], font=clue_font)
             txt.tag_config("highlight", background=c['highlight'])
             txt.tag_config("completed", foreground=c['completed'])
+            txt.tag_config("ref", foreground=c['ref'], font=("Arial", self.clue_font_size, "bold"))
             txt.tag_config("default", background=c['input_bg'], foreground=c['fg'])
             
         self.refresh_grid()
@@ -349,12 +435,14 @@ class CrosswordApp:
         if 20 <= new_cell <= 100:
             self.cell_size = new_cell
             self.refresh_grid()
+            self.save_settings()
 
     def change_text_zoom(self, delta):
         new_font = self.clue_font_size + delta
         if 8 <= new_font <= 24:
             self.clue_font_size = new_font
             self.apply_theme()
+            self.save_settings()
 
     def clean_clue_text(self, text):
         if not text: return ""
@@ -369,6 +457,10 @@ class CrosswordApp:
 
     def load_puz_file(self, filename):
         try:
+            # 1. Save old puzzle progress before loading new
+            self.save_current_progress()
+            
+            # 2. Read new puzzle
             self.puzzle = puz.read(filename)
             self.current_file_path = filename
         except Exception as e:
@@ -393,7 +485,18 @@ class CrosswordApp:
             self.is_redacted = True
             self.var_error_check.set(False)
 
-        self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
+        # 3. Check for saved progress
+        if self.current_file_path in self.game_saves:
+            # Restore saved grid
+            saved_grid = self.game_saves[self.current_file_path]
+            # Safety check: lengths must match
+            if len(saved_grid) == len(self.solution_grid):
+                self.user_grid = saved_grid
+            else:
+                self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
+        else:
+            # New grid
+            self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
         self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
 
@@ -406,6 +509,9 @@ class CrosswordApp:
 
         self.refresh_grid()
         self.update_clue_display()
+        
+        # Save settings immediately so last_file is recorded
+        self.save_settings()
         
         if not self.sidebar_visible:
             self.toggle_sidebar()
@@ -713,6 +819,15 @@ class CrosswordApp:
                 self.user_grid[self.get_index(c, row)] = self.solution_grid[self.get_index(c, row)]
         self.refresh_grid()
 
+    def reveal_puzzle(self):
+        if not self.puzzle: return
+        if self.is_redacted:
+            messagebox.showinfo("Cannot Reveal", "Hidden answers.")
+            return
+        if messagebox.askyesno("Reveal Puzzle", "Are you sure you want to reveal the entire puzzle?"):
+            self.user_grid = list(self.solution_grid)
+            self.refresh_grid()
+
     def move_cursor(self, dr, dc):
         new_r = self.cursor_row + dr
         new_c = self.cursor_col + dc
@@ -857,16 +972,51 @@ class CrosswordApp:
         
         target_list = self.clue_mapping.across if self.direction == 'across' else self.clue_mapping.down
         found_clue = ""
+        found_clue_text = ""
         clue_num = -1
         for clue in target_list:
             if clue['cell'] == start_idx:
-                found_clue = f"{clue['num']}. {self.clean_clue_text(clue['clue'])}"
+                found_clue_text = self.clean_clue_text(clue['clue'])
+                found_clue = f"{clue['num']}. {found_clue_text}"
                 clue_num = clue['num']
                 break
         
         self.lbl_current_clue.config(text=found_clue)
         self.highlight_text_widget(self.txt_across, clue_num, self.direction == 'across')
         self.highlight_text_widget(self.txt_down, clue_num, self.direction == 'down')
+        
+        self.txt_across.tag_remove("ref", "1.0", tk.END)
+        self.txt_down.tag_remove("ref", "1.0", tk.END)
+        
+        if found_clue_text:
+            explicit_refs = re.findall(r'(\d+)-(Across|Down)', found_clue_text, re.IGNORECASE)
+            for num_str, direction_str in explicit_refs:
+                direction_key = direction_str.lower()
+                target_widget = self.txt_across if direction_key == 'across' else self.txt_down
+                self.highlight_ref(target_widget, direction_key, int(num_str))
+
+            potential_refs = re.findall(r'(\d+)-', found_clue_text)
+            for num_str in potential_refs:
+                num = int(num_str)
+                is_across = any(c['num'] == num for c in self.clue_mapping.across)
+                is_down = any(c['num'] == num for c in self.clue_mapping.down)
+                context_across = "across" in found_clue_text.lower()
+                context_down = "down" in found_clue_text.lower()
+                
+                if context_across and is_across:
+                    self.highlight_ref(self.txt_across, 'across', num)
+                elif context_down and is_down:
+                    self.highlight_ref(self.txt_down, 'down', num)
+                elif is_across and not is_down:
+                    self.highlight_ref(self.txt_across, 'across', num)
+                elif is_down and not is_across:
+                    self.highlight_ref(self.txt_down, 'down', num)
+
+    def highlight_ref(self, txt_widget, direction, num):
+        tag_name = f"{direction}_{num}"
+        ranges = txt_widget.tag_ranges(tag_name)
+        if ranges:
+            txt_widget.tag_add("ref", ranges[0], ranges[1])
 
     def highlight_text_widget(self, txt_widget, clue_num, is_active_direction):
         txt_widget.tag_remove("highlight", "1.0", tk.END)

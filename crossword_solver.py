@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v10.0")
+        self.root.title("Python .puz Solver - v11.0")
         self.root.geometry("1200x750")
 
         # Game State
@@ -91,22 +91,19 @@ class CrosswordApp:
         self.lbl_filename = tk.Label(self.top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"))
         self.lbl_filename.pack(side=tk.LEFT)
         
-        # --- Separate Zoom Controls ---
-        # Text Zoom
+        # Zoom Controls
         self.btn_text_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_text_zoom(1), font=("Arial", 9, "bold"), width=2)
         self.btn_text_plus.pack(side=tk.RIGHT, padx=2)
         self.btn_text_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_text_zoom(-1), font=("Arial", 9, "bold"), width=2)
         self.btn_text_minus.pack(side=tk.RIGHT, padx=2)
         tk.Label(self.top_frame, text="Text:", font=("Arial", 10)).pack(side=tk.RIGHT, padx=(10, 2))
 
-        # Grid Zoom
         self.btn_grid_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_grid_zoom(5), font=("Arial", 9, "bold"), width=2)
         self.btn_grid_plus.pack(side=tk.RIGHT, padx=2)
         self.btn_grid_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_grid_zoom(-5), font=("Arial", 9, "bold"), width=2)
         self.btn_grid_minus.pack(side=tk.RIGHT, padx=2)
         tk.Label(self.top_frame, text="Grid:", font=("Arial", 10)).pack(side=tk.RIGHT, padx=(10, 2))
 
-        # Clue Label
         self.lbl_current_clue = tk.Label(self.top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=500)
         self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=15)
 
@@ -344,7 +341,7 @@ class CrosswordApp:
         new_font = self.clue_font_size + delta
         if 8 <= new_font <= 24:
             self.clue_font_size = new_font
-            self.apply_theme() # Refresh text widgets
+            self.apply_theme()
 
     def clean_clue_text(self, text):
         if not text: return ""
@@ -587,6 +584,11 @@ class CrosswordApp:
                 end_r += 1
             return start_r <= row <= end_r
 
+    def is_locked(self, idx):
+        """Check if cell is correct and error check mode is ON (prevents editing)"""
+        return self.var_error_check.get() and not self.is_redacted and \
+               self.user_grid[idx] == self.solution_grid[idx]
+
     def handle_keypress(self, event):
         if not self.puzzle: return
         key = event.keysym
@@ -607,26 +609,32 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
         elif key == "BackSpace":
-            self.user_grid[self.get_index(self.cursor_col, self.cursor_row)] = '-'
-            # Move back logic simplified to just move 1 step opposite
+            idx = self.get_index(self.cursor_col, self.cursor_row)
+            # Only delete if not locked
+            if not self.is_locked(idx):
+                self.user_grid[idx] = '-'
+            
+            # Move back
             if self.direction == 'across': self.move_smart(0, -1)
             else: self.move_smart(-1, 0)
             self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            self.user_grid[idx] = char
-            self.refresh_grid()
+            
+            # Only update if not locked
+            if not self.is_locked(idx):
+                self.user_grid[idx] = char
+                self.refresh_grid()
+            
             self.step_forward()
         return "break"
 
     def move_smart(self, dr, dc):
-        """Standard move used for backspace/single steps"""
         r, c = self.cursor_row, self.cursor_col
         while True:
             r += dr
             c += dc
-            # Wrap logic
             if c < 0: r, c = r - 1, self.width - 1
             elif c >= self.width: r, c = r + 1, 0
             if r < 0: r, c = self.height - 1, self.width - 1
@@ -641,43 +649,27 @@ class CrosswordApp:
             if r == self.cursor_row and c == self.cursor_col: break
 
     def move_vector_jump(self, dr, dc):
-        """Move in direction, skipping gaps if blocked"""
         r, c = self.cursor_row, self.cursor_col
-        # 1. Try immediate neighbor
         nr, nc = r + dr, c + dc
-
-        # Check if we hit a wall or black square
         hit_barrier = False
-        if not (0 <= nr < self.height and 0 <= nc < self.width):
-            hit_barrier = True
-        elif self.solution_grid[self.get_index(nc, nr)] == '.':
-            hit_barrier = True
+        if not (0 <= nr < self.height and 0 <= nc < self.width): hit_barrier = True
+        elif self.solution_grid[self.get_index(nc, nr)] == '.': hit_barrier = True
 
         if hit_barrier:
-            # 2. Look for the next open slot in the SAME row/col
             search_r, search_c = nr, nc
             while True:
                 search_r += dr
                 search_c += dc
-                # If we go off board, break loop (standard wrap logic handles it later)
-                if not (0 <= search_r < self.height and 0 <= search_c < self.width):
-                    break # End of column/row
-                
-                # If we find a white square, that's our target
+                if not (0 <= search_r < self.height and 0 <= search_c < self.width): break
                 idx = self.get_index(search_c, search_r)
                 if self.solution_grid[idx] != '.':
-                    self.cursor_row = search_r
-                    self.cursor_col = search_c
+                    self.cursor_row, self.cursor_col = search_r, search_c
                     self.refresh_grid()
                     self.update_clue_display()
                     return
-
-            # 3. If here, no gap jump possible. Fallback to standard wrap.
             self.move_smart(dr, dc)
         else:
-            # Normal move
-            self.cursor_row = nr
-            self.cursor_col = nc
+            self.cursor_row, self.cursor_col = nr, nc
             self.refresh_grid()
             self.update_clue_display()
 
@@ -750,7 +742,6 @@ class CrosswordApp:
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         if visited_indices is None: visited_indices = {current_idx}
         
-        # Determine Current Word Start
         start_idx = current_idx
         if self.direction == 'across':
             c = self.cursor_col
@@ -769,7 +760,6 @@ class CrosswordApp:
             next_list = self.clue_mapping.across
             next_direction = 'across'
 
-        # Find current clue in list
         current_clue_index = -1
         for i, clue in enumerate(current_list):
             if clue['cell'] == start_idx:
@@ -778,7 +768,6 @@ class CrosswordApp:
         
         next_clue = None
         if forward:
-            # Forward Logic (Tab)
             if current_clue_index != -1 and current_clue_index < len(current_list) - 1:
                 next_clue = current_list[current_clue_index + 1]
             else:
@@ -788,11 +777,9 @@ class CrosswordApp:
                 else:
                     if len(current_list) > 0: next_clue = current_list[0]
         else:
-            # Reverse Logic (Shift+Tab)
             if current_clue_index > 0:
                 next_clue = current_list[current_clue_index - 1]
             else:
-                # Wrap to end of other list
                 if len(next_list) > 0:
                     next_clue = next_list[-1]
                     self.direction = next_direction
@@ -805,7 +792,6 @@ class CrosswordApp:
             self.refresh_grid()
             self.update_clue_display()
             
-            # Skip Filled Check
             if self.var_skip_filled.get():
                 dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
                 temp_r, temp_c = self.cursor_row, self.cursor_col

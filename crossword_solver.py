@@ -9,10 +9,9 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v13.0")
+        self.root.title("Python .puz Solver - v14.0")
         self.root.geometry("1200x750")
         
-        # Handle Window Close Event to Save
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # Game State
@@ -26,12 +25,14 @@ class CrosswordApp:
         self.is_redacted = False
         self.current_file_path = ""
         
+        # Highlight State
+        self.highlighted_ref_indices = set() # Indices of referenced words
+        
         # Files
         self.favorites_file = "favorites.json"
         self.settings_file = "settings.json"
         self.saves_file = "saves.json"
         
-        # Load Data
         self.favorites = self.load_json(self.favorites_file, [])
         self.game_saves = self.load_json(self.saves_file, {})
 
@@ -40,44 +41,37 @@ class CrosswordApp:
         self.cursor_row = 0
         self.direction = 'across'
         
-        # --- Settings Variables ---
+        # Settings
         self.var_error_check = tk.BooleanVar(value=True)
         self.var_skip_filled = tk.BooleanVar(value=True)
         self.var_end_behavior = tk.StringVar(value="next")
         self.var_dark_theme = tk.BooleanVar(value=True)
         self.var_ctrl_mode = tk.StringVar(value="letter") 
-        self.var_ctrl_reveal = tk.BooleanVar(value=True) # Added missing var init
+        self.var_ctrl_reveal = tk.BooleanVar(value=True)
         
-        # Visual Settings
+        # Visuals
         self.cell_size = 35 
         self.clue_font_size = 10 
         self.sidebar_visible = False
         self.last_opened_file = ""
-        
-        # Load User Settings
-        self.load_settings()
-        
         self.c = {} 
+        
+        self.load_settings()
 
         # --- UI Layout ---
-        
-        # Menu
         menubar = tk.Menu(self.root)
         
-        # File Menu
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Open .puz File", command=self.browse_file)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.on_close)
         menubar.add_cascade(label="File", menu=file_menu)
         
-        # Reveal Menu
         self.reveal_menu = tk.Menu(menubar, tearoff=0)
         self.reveal_menu.add_command(label="Reveal Current Word", command=self.reveal_current_word)
         self.reveal_menu.add_command(label="Reveal Puzzle", command=self.reveal_puzzle)
         menubar.add_cascade(label="Reveal", menu=self.reveal_menu)
         
-        # Options Menu
         options_menu = tk.Menu(menubar, tearoff=0)
         options_menu.add_checkbutton(label="Dark Theme", onvalue=True, offvalue=False,
                                      variable=self.var_dark_theme, command=self.apply_theme_and_save)
@@ -87,7 +81,6 @@ class CrosswordApp:
         options_menu.add_checkbutton(label="Skip Filled Squares", onvalue=True, offvalue=False, 
                                      variable=self.var_skip_filled, command=self.save_settings_trigger)
         
-        # Ctrl Behavior Submenu
         ctrl_menu = tk.Menu(options_menu, tearoff=0)
         ctrl_menu.add_radiobutton(label="Reveal Letter", value="letter", variable=self.var_ctrl_mode, command=self.save_settings)
         ctrl_menu.add_radiobutton(label="Reveal Word", value="word", variable=self.var_ctrl_mode, command=self.save_settings)
@@ -110,7 +103,7 @@ class CrosswordApp:
         self.lbl_filename = tk.Label(self.top_frame, text="No File Selected", font=("Helvetica", 12, "bold", "italic"))
         self.lbl_filename.pack(side=tk.LEFT)
         
-        # Zoom Controls
+        # Zoom
         self.btn_text_plus = tk.Button(self.top_frame, text=" + ", command=lambda: self.change_text_zoom(1), font=("Arial", 9, "bold"), width=2, takefocus=0)
         self.btn_text_plus.pack(side=tk.RIGHT, padx=2)
         self.btn_text_minus = tk.Button(self.top_frame, text=" - ", command=lambda: self.change_text_zoom(-1), font=("Arial", 9, "bold"), width=2, takefocus=0)
@@ -126,7 +119,7 @@ class CrosswordApp:
         self.lbl_current_clue = tk.Label(self.top_frame, text="", font=("Helvetica", 12, "bold"), wraplength=500)
         self.lbl_current_clue.pack(side=tk.RIGHT, fill=tk.X, padx=15)
 
-        # Resizable Layout
+        # Main Layout
         self.main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, sashwidth=6)
         self.main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -139,7 +132,6 @@ class CrosswordApp:
         self.file_listbox.pack(expand=True, fill=tk.BOTH, padx=2, pady=2)
         self.file_listbox.bind("<<ListboxSelect>>", self.on_file_select)
         
-        # Context Menu
         self.context_menu = tk.Menu(self.root, tearoff=0)
         self.context_menu.add_command(label="⭐ Add/Remove Favorite", command=self.toggle_favorite)
         self.context_menu.add_separator()
@@ -148,15 +140,13 @@ class CrosswordApp:
         self.file_listbox.bind("<Button-3>", self.show_context_menu)
         self.file_listbox.bind("<space>", self.block_listbox_space) 
         
-        # Game Area
+        # Game
         self.game_paned = tk.PanedWindow(self.main_paned, orient=tk.HORIZONTAL, sashwidth=6)
         
-        # Grid
         self.grid_frame = tk.Frame(self.game_paned)
         self.canvas = tk.Canvas(self.grid_frame, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Clues
         self.clues_frame = tk.Frame(self.game_paned)
         
         # Across
@@ -165,12 +155,9 @@ class CrosswordApp:
         
         frame_across = tk.Frame(self.clues_frame)
         frame_across.pack(side=tk.TOP, expand=True, fill=tk.BOTH, pady=(0, 10))
-        
         sb_across = tk.Scrollbar(frame_across)
         sb_across.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.txt_across = tk.Text(frame_across, wrap=tk.WORD, 
-                                  state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_across.set, height=10)
+        self.txt_across = tk.Text(frame_across, wrap=tk.WORD, state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_across.set, height=10)
         self.txt_across.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_across.config(command=self.txt_across.yview)
 
@@ -180,16 +167,17 @@ class CrosswordApp:
         
         frame_down = tk.Frame(self.clues_frame)
         frame_down.pack(side=tk.TOP, expand=True, fill=tk.BOTH)
-        
         sb_down = tk.Scrollbar(frame_down)
         sb_down.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.txt_down = tk.Text(frame_down, wrap=tk.WORD, 
-                                state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_down.set, height=10)
+        self.txt_down = tk.Text(frame_down, wrap=tk.WORD, state=tk.DISABLED, cursor="arrow", yscrollcommand=sb_down.set, height=10)
         self.txt_down.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         sb_down.config(command=self.txt_down.yview)
 
-        # Layout Assembly
+        # Tags
+        for txt in [self.txt_across, self.txt_down]:
+            txt.tag_config("highlight", background="#E1F5FE") 
+            txt.tag_config("default", background="white")
+
         self.main_paned.add(self.game_paned)
         self.game_paned.add(self.grid_frame, minsize=400)
         self.game_paned.add(self.clues_frame, minsize=200)
@@ -197,19 +185,13 @@ class CrosswordApp:
         # Bindings
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
-        
         self.root.bind("<Tab>", self.handle_tab)
         self.root.bind("<Shift-Tab>", self.handle_shift_tab)
-        
         self.root.bind("<Control_L>", self.handle_ctrl_key)
         self.root.bind("<Control_R>", self.handle_ctrl_key)
-        
         self.root.bind("<Button-1>", lambda e: self.canvas.focus_set())
 
-        # Apply Theme
         self.apply_theme()
-        
-        # Load Last Opened File
         if self.last_opened_file and os.path.exists(self.last_opened_file):
             self.load_puz_file(self.last_opened_file)
 
@@ -217,23 +199,17 @@ class CrosswordApp:
     def load_json(self, filepath, default):
         if os.path.exists(filepath):
             try:
-                with open(filepath, 'r') as f:
-                    return json.load(f)
-            except:
-                return default
+                with open(filepath, 'r') as f: return json.load(f)
+            except: return default
         return default
 
     def save_json(self, filepath, data):
         try:
-            with open(filepath, 'w') as f:
-                json.dump(data, f)
-        except:
-            pass
+            with open(filepath, 'w') as f: json.dump(data, f)
+        except: pass
 
     def on_close(self):
-        # Save current puzzle state
         self.save_current_progress()
-        # Save settings (including last opened file)
         self.save_settings()
         self.root.destroy()
 
@@ -245,7 +221,6 @@ class CrosswordApp:
     def load_settings(self):
         data = self.load_json(self.settings_file, {})
         if not data: return
-        
         self.var_dark_theme.set(data.get("dark_theme", True))
         self.var_error_check.set(data.get("error_check", True))
         self.var_ctrl_mode.set(data.get("ctrl_mode", "letter"))
@@ -254,7 +229,6 @@ class CrosswordApp:
         self.cell_size = data.get("cell_size", 35)
         self.clue_font_size = data.get("clue_font_size", 10)
         self.last_opened_file = data.get("last_file", "")
-        
         geom = data.get("geometry", "1200x750")
         try: self.root.geometry(geom)
         except: pass
@@ -319,8 +293,7 @@ class CrosswordApp:
         selection = self.file_listbox.curselection()
         if not selection: return None
         filename = self.file_listbox.get(selection[0])
-        if filename.startswith("⭐ "):
-            filename = filename.replace("⭐ ", "")
+        if filename.startswith("⭐ "): filename = filename.replace("⭐ ", "")
         if self.current_file_path:
             return os.path.join(os.path.dirname(self.current_file_path), filename)
         return None
@@ -329,13 +302,10 @@ class CrosswordApp:
         path = self.get_selected_file_path()
         if not path: return
         path = os.path.abspath(path)
-        if path in self.favorites:
-            self.favorites.remove(path)
-        else:
-            self.favorites.append(path)
+        if path in self.favorites: self.favorites.remove(path)
+        else: self.favorites.append(path)
         self.save_json(self.favorites_file, self.favorites)
-        if self.current_file_path:
-            self.update_sidebar(os.path.dirname(self.current_file_path))
+        if self.current_file_path: self.update_sidebar(os.path.dirname(self.current_file_path))
 
     def delete_file(self):
         path = self.get_selected_file_path()
@@ -352,7 +322,7 @@ class CrosswordApp:
             except Exception as e:
                 messagebox.showerror("Error", f"Could not delete file: {e}")
 
-    # --- Zoom & Theme ---
+    # --- Colors & Theme ---
     def define_colors(self):
         if self.var_dark_theme.get():
             self.c = {
@@ -366,10 +336,11 @@ class CrosswordApp:
                 'black_sq': '#333333',
                 'cursor': '#d19e44',
                 'highlight': '#506880',
+                'ref_highlight': '#554466', # Purple-ish for references
                 'error': '#FF5555',
                 'sash': '#444444',
                 'completed': '#888888',
-                'ref': '#A480CF',
+                'ref_text': '#A480CF',
                 'btn_bg': '#444444',
                 'btn_fg': 'white'
             }
@@ -385,10 +356,11 @@ class CrosswordApp:
                 'black_sq': 'black',
                 'cursor': '#FFEB3B',
                 'highlight': '#E1F5FE',
+                'ref_highlight': '#F3E5F5', # Light Lavender for references
                 'error': 'red',
                 'sash': '#cccccc',
                 'completed': '#999999',
-                'ref': '#673AB7',
+                'ref_text': '#673AB7',
                 'btn_bg': '#e9ecef',
                 'btn_fg': 'black'
             }
@@ -396,7 +368,6 @@ class CrosswordApp:
     def apply_theme(self):
         self.define_colors()
         c = self.c
-        
         self.root.config(bg=c['bg'])
         self.top_frame.config(bg=c['panel_bg'])
         self.main_paned.config(bg=c['sash'])
@@ -406,12 +377,9 @@ class CrosswordApp:
         self.sidebar_label.config(bg=c['input_bg'], fg=c['fg'])
         self.file_listbox.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], selectforeground=c['fg'])
         
-        labels = [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down]
-        for lbl in labels:
+        for lbl in [self.lbl_filename, self.lbl_current_clue, self.lbl_across, self.lbl_down]:
             lbl.config(bg=c['panel_bg'], fg=c['fg'])
-            
-        btns = [self.btn_sidebar, self.btn_text_plus, self.btn_text_minus, self.btn_grid_plus, self.btn_grid_minus]
-        for btn in btns:
+        for btn in [self.btn_sidebar, self.btn_text_plus, self.btn_text_minus, self.btn_grid_plus, self.btn_grid_minus]:
             btn.config(bg=c['btn_bg'], fg=c['btn_fg'])
 
         self.grid_frame.config(bg=c['bg'])
@@ -419,12 +387,11 @@ class CrosswordApp:
         self.clues_frame.config(bg=c['bg'])
         
         clue_font = ("Arial", self.clue_font_size)
-        
         for txt in [self.txt_across, self.txt_down]:
             txt.config(bg=c['input_bg'], fg=c['fg'], selectbackground=c['highlight'], font=clue_font)
             txt.tag_config("highlight", background=c['highlight'])
             txt.tag_config("completed", foreground=c['completed'])
-            txt.tag_config("ref", foreground=c['ref'], font=("Arial", self.clue_font_size, "bold"))
+            txt.tag_config("ref", foreground=c['ref_text'], font=("Arial", self.clue_font_size, "bold"))
             txt.tag_config("default", background=c['input_bg'], foreground=c['fg'])
             
         self.refresh_grid()
@@ -452,15 +419,11 @@ class CrosswordApp:
 
     def browse_file(self):
         filename = filedialog.askopenfilename(filetypes=[("Puzzle Files", "*.puz"), ("All Files", "*.*")])
-        if filename:
-            self.load_puz_file(filename)
+        if filename: self.load_puz_file(filename)
 
     def load_puz_file(self, filename):
         try:
-            # 1. Save old puzzle progress before loading new
             self.save_current_progress()
-            
-            # 2. Read new puzzle
             self.puzzle = puz.read(filename)
             self.current_file_path = filename
         except Exception as e:
@@ -469,52 +432,41 @@ class CrosswordApp:
 
         base_name = os.path.basename(filename)
         self.lbl_filename.config(text=base_name)
-
         self.update_sidebar(os.path.dirname(filename))
 
         self.width = self.puzzle.width
         self.height = self.puzzle.height
-        
         self.solution_grid = list(self.puzzle.solution)
         
         self.is_redacted = False
         x_count = self.solution_grid.count('X') + self.solution_grid.count('x')
-        total_cells = len(self.solution_grid) - self.solution_grid.count('.')
-        
-        if total_cells > 0 and (x_count / total_cells) > 0.8:
+        if (len(self.solution_grid) - self.solution_grid.count('.')) > 0 and (x_count / (len(self.solution_grid) - self.solution_grid.count('.'))) > 0.8:
             self.is_redacted = True
             self.var_error_check.set(False)
 
-        # 3. Check for saved progress
         if self.current_file_path in self.game_saves:
-            # Restore saved grid
             saved_grid = self.game_saves[self.current_file_path]
-            # Safety check: lengths must match
             if len(saved_grid) == len(self.solution_grid):
                 self.user_grid = saved_grid
             else:
                 self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         else:
-            # New grid
             self.user_grid = ['-' if c != '.' else '.' for c in self.solution_grid]
         
         self.canvas.config(width=self.width * self.cell_size, height=self.height * self.cell_size)
-
         self.parse_clues()
-        
         self.cursor_col = 0
         self.cursor_row = 0
         self.direction = 'across'
         self.find_first_valid_cell()
-
+        
         self.refresh_grid()
-        self.update_clue_display()
+        # IMPORTANT: Trigger update once to process refs and then refresh again
+        self.update_clue_display() 
+        self.refresh_grid() # Re-draw to show initial highlights if any
         
-        # Save settings immediately so last_file is recorded
         self.save_settings()
-        
-        if not self.sidebar_visible:
-            self.toggle_sidebar()
+        if not self.sidebar_visible: self.toggle_sidebar()
 
     def update_sidebar(self, folder_path):
         self.file_listbox.delete(0, tk.END)
@@ -523,9 +475,7 @@ class CrosswordApp:
             files.sort()
             for f in files:
                 full_p = os.path.abspath(os.path.join(folder_path, f))
-                display_name = f
-                if full_p in self.favorites:
-                    display_name = "⭐ " + f
+                display_name = "⭐ " + f if full_p in self.favorites else f
                 self.file_listbox.insert(tk.END, display_name)
             current_name = os.path.basename(self.current_file_path)
             for i in range(self.file_listbox.size()):
@@ -534,8 +484,7 @@ class CrosswordApp:
                     self.file_listbox.selection_set(i)
                     self.file_listbox.see(i)
                     break
-        except Exception:
-            pass
+        except: pass
 
     def toggle_sidebar(self):
         if self.sidebar_visible:
@@ -553,14 +502,12 @@ class CrosswordApp:
         filename = self.file_listbox.get(selection[0])
         if filename.startswith("⭐ "): filename = filename.replace("⭐ ", "")
         full_path = os.path.join(os.path.dirname(self.current_file_path), filename)
-        if full_path != self.current_file_path:
-            self.load_puz_file(full_path)
+        if full_path != self.current_file_path: self.load_puz_file(full_path)
         self.canvas.focus_set()
 
     def parse_clues(self):
         self.clue_mapping = self.puzzle.clue_numbering()
         self.grid_numbers = {}
-
         self.txt_across.config(state=tk.NORMAL)
         self.txt_across.delete(1.0, tk.END)
         for clue in self.clue_mapping.across:
@@ -592,8 +539,9 @@ class CrosswordApp:
                 self.cursor_row = clue['cell'] // self.width
                 self.cursor_col = clue['cell'] % self.width
                 self.direction = direction
-                self.refresh_grid()
+                # Update display first to calc refs, then refresh grid
                 self.update_clue_display()
+                self.refresh_grid()
                 return
 
     def find_first_valid_cell(self):
@@ -606,6 +554,7 @@ class CrosswordApp:
     def get_index(self, col, row):
         return row * self.width + col
 
+    # --- Grid Logic with Ref Highlighting ---
     def refresh_grid(self):
         if not self.puzzle: return
         self.canvas.delete("all")
@@ -634,6 +583,8 @@ class CrosswordApp:
                     bg_color = c['cursor']
                 elif self.is_highlighted(c_idx, r):
                     bg_color = c['highlight']
+                elif idx in self.highlighted_ref_indices: # Reference Highlight
+                    bg_color = c['ref_highlight']
                 
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_color, outline="#555555")
 
@@ -652,7 +603,6 @@ class CrosswordApp:
 
     def check_completed_clues(self):
         if not self.puzzle: return
-        
         def check_list(clue_list, direction):
             txt_widget = self.txt_across if direction == 'across' else self.txt_down
             for clue in clue_list:
@@ -669,67 +619,51 @@ class CrosswordApp:
                         break
                     if direction == 'across': curr_c += 1
                     else: curr_r += 1
-                
                 tag_name = f"{direction}_{clue['num']}"
                 ranges = txt_widget.tag_ranges(tag_name)
                 if ranges:
-                    if is_filled:
-                        txt_widget.tag_add("completed", ranges[0], ranges[1])
-                    else:
-                        txt_widget.tag_remove("completed", ranges[0], ranges[1])
-
+                    if is_filled: txt_widget.tag_add("completed", ranges[0], ranges[1])
+                    else: txt_widget.tag_remove("completed", ranges[0], ranges[1])
         check_list(self.clue_mapping.across, 'across')
         check_list(self.clue_mapping.down, 'down')
 
     def is_highlighted(self, col, row):
         if self.solution_grid[self.get_index(col, row)] == '.': return False
-        
         if self.direction == 'across':
             if row != self.cursor_row: return False
             start_c = self.cursor_col
-            while start_c > 0 and self.solution_grid[self.get_index(start_c-1, row)] != '.':
-                start_c -= 1
+            while start_c > 0 and self.solution_grid[self.get_index(start_c-1, row)] != '.': start_c -= 1
             end_c = self.cursor_col
-            while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, row)] != '.':
-                end_c += 1
+            while end_c < self.width - 1 and self.solution_grid[self.get_index(end_c+1, row)] != '.': end_c += 1
             return start_c <= col <= end_c
-        else: # Down
+        else:
             if col != self.cursor_col: return False
             start_r = self.cursor_row
-            while start_r > 0 and self.solution_grid[self.get_index(col, start_r-1)] != '.':
-                start_r -= 1
+            while start_r > 0 and self.solution_grid[self.get_index(col, start_r-1)] != '.': start_r -= 1
             end_r = self.cursor_row
-            while end_r < self.height - 1 and self.solution_grid[self.get_index(col, end_r+1)] != '.':
-                end_r += 1
+            while end_r < self.height - 1 and self.solution_grid[self.get_index(col, end_r+1)] != '.': end_r += 1
             return start_r <= row <= end_r
 
     def is_locked(self, idx):
-        return self.var_error_check.get() and not self.is_redacted and \
-               self.user_grid[idx] == self.solution_grid[idx]
+        return self.var_error_check.get() and not self.is_redacted and self.user_grid[idx] == self.solution_grid[idx]
 
     def handle_keypress(self, event):
         if not self.puzzle: return
         key = event.keysym
-        
         if event.state & 0x0004: return "break"
         if "Control" in key or "Alt" in key or "Shift" in key: return
 
-        if key == "Left":
-            self.move_vector_jump(0, -1)
-        elif key == "Right":
-            self.move_vector_jump(0, 1)
-        elif key == "Up":
-            self.move_vector_jump(-1, 0)
-        elif key == "Down":
-            self.move_vector_jump(1, 0)
+        if key == "Left": self.move_vector_jump(0, -1)
+        elif key == "Right": self.move_vector_jump(0, 1)
+        elif key == "Up": self.move_vector_jump(-1, 0)
+        elif key == "Down": self.move_vector_jump(1, 0)
         elif key == "space":
             self.direction = 'down' if self.direction == 'across' else 'across'
-            self.refresh_grid()
             self.update_clue_display()
+            self.refresh_grid() # Refresh after direction change to redraw highlight
         elif key == "BackSpace":
             idx = self.get_index(self.cursor_col, self.cursor_row)
-            if not self.is_locked(idx):
-                self.user_grid[idx] = '-'
+            if not self.is_locked(idx): self.user_grid[idx] = '-'
             if self.direction == 'across': self.move_smart(0, -1)
             else: self.move_smart(-1, 0)
             self.refresh_grid()
@@ -751,12 +685,11 @@ class CrosswordApp:
             elif c >= self.width: r, c = r + 1, 0
             if r < 0: r, c = self.height - 1, self.width - 1
             elif r >= self.height: r, c = 0, 0
-            
             idx = self.get_index(c, r)
             if self.solution_grid[idx] != '.':
                 self.cursor_row, self.cursor_col = r, c
-                self.refresh_grid()
                 self.update_clue_display()
+                self.refresh_grid()
                 return
             if r == self.cursor_row and c == self.cursor_col: break
 
@@ -776,14 +709,14 @@ class CrosswordApp:
                 idx = self.get_index(search_c, search_r)
                 if self.solution_grid[idx] != '.':
                     self.cursor_row, self.cursor_col = search_r, search_c
-                    self.refresh_grid()
                     self.update_clue_display()
+                    self.refresh_grid()
                     return
             self.move_smart(dr, dc)
         else:
             self.cursor_row, self.cursor_col = nr, nc
-            self.refresh_grid()
             self.update_clue_display()
+            self.refresh_grid()
 
     def reveal_current_letter(self, event):
         if not self.puzzle: return
@@ -940,7 +873,7 @@ class CrosswordApp:
                     if new_idx not in visited_indices:
                         visited_indices.add(new_idx)
                         self.jump_to_next_word(forward, visited_indices)
-            
+
     def on_click(self, event):
         if not self.puzzle: return
         c = event.x // self.cell_size
@@ -952,9 +885,13 @@ class CrosswordApp:
             else:
                 self.cursor_col = c
                 self.cursor_row = r
-            self.refresh_grid()
-            self.update_clue_display()
+            
+            # Update display immediately so we know the new word context
+            self.update_clue_display() 
+            # Then redraw grid (which uses the context for highlighting)
+            self.refresh_grid() 
 
+    # --- Ref Parsing & Display Update ---
     def update_clue_display(self):
         if not self.puzzle: return
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
@@ -985,38 +922,62 @@ class CrosswordApp:
         self.highlight_text_widget(self.txt_across, clue_num, self.direction == 'across')
         self.highlight_text_widget(self.txt_down, clue_num, self.direction == 'down')
         
+        # --- Parsing Refs for Grid & Text ---
         self.txt_across.tag_remove("ref", "1.0", tk.END)
         self.txt_down.tag_remove("ref", "1.0", tk.END)
+        self.highlighted_ref_indices.clear()
         
         if found_clue_text:
+            # 1. Parse "17-Across" or "5-Down"
             explicit_refs = re.findall(r'(\d+)-(Across|Down)', found_clue_text, re.IGNORECASE)
             for num_str, direction_str in explicit_refs:
-                direction_key = direction_str.lower()
-                target_widget = self.txt_across if direction_key == 'across' else self.txt_down
-                self.highlight_ref(target_widget, direction_key, int(num_str))
+                d = direction_str.lower()
+                n = int(num_str)
+                target = self.txt_across if d == 'across' else self.txt_down
+                self.highlight_ref_text(target, d, n)
+                self.highlight_ref_grid(n, d)
 
+            # 2. Parse lists like "17-, 25-, 52-"
             potential_refs = re.findall(r'(\d+)-', found_clue_text)
+            context_across = "across" in found_clue_text.lower()
+            context_down = "down" in found_clue_text.lower()
+            
             for num_str in potential_refs:
-                num = int(num_str)
-                is_across = any(c['num'] == num for c in self.clue_mapping.across)
-                is_down = any(c['num'] == num for c in self.clue_mapping.down)
-                context_across = "across" in found_clue_text.lower()
-                context_down = "down" in found_clue_text.lower()
+                n = int(num_str)
+                is_across = any(c['num'] == n for c in self.clue_mapping.across)
+                is_down = any(c['num'] == n for c in self.clue_mapping.down)
                 
-                if context_across and is_across:
-                    self.highlight_ref(self.txt_across, 'across', num)
-                elif context_down and is_down:
-                    self.highlight_ref(self.txt_down, 'down', num)
-                elif is_across and not is_down:
-                    self.highlight_ref(self.txt_across, 'across', num)
-                elif is_down and not is_across:
-                    self.highlight_ref(self.txt_down, 'down', num)
+                # Determine direction based on context or existence
+                final_dir = None
+                if context_across and is_across: final_dir = 'across'
+                elif context_down and is_down: final_dir = 'down'
+                elif is_across and not is_down: final_dir = 'across'
+                elif is_down and not is_across: final_dir = 'down'
+                
+                if final_dir:
+                    target = self.txt_across if final_dir == 'across' else self.txt_down
+                    self.highlight_ref_text(target, final_dir, n)
+                    self.highlight_ref_grid(n, final_dir)
 
-    def highlight_ref(self, txt_widget, direction, num):
+    def highlight_ref_text(self, txt_widget, direction, num):
         tag_name = f"{direction}_{num}"
         ranges = txt_widget.tag_ranges(tag_name)
-        if ranges:
-            txt_widget.tag_add("ref", ranges[0], ranges[1])
+        if ranges: txt_widget.tag_add("ref", ranges[0], ranges[1])
+
+    def highlight_ref_grid(self, num, direction):
+        # Calculate indices for this clue number + direction
+        clue_list = self.clue_mapping.across if direction == 'across' else self.clue_mapping.down
+        found_clue = next((c for c in clue_list if c['num'] == num), None)
+        if found_clue:
+            start = found_clue['cell']
+            r, c = start // self.width, start % self.width
+            # Traverse word
+            while 0 <= r < self.height and 0 <= c < self.width:
+                idx = self.get_index(c, r)
+                if self.solution_grid[idx] == '.': break
+                self.highlighted_ref_indices.add(idx)
+                if direction == 'across': c += 1
+                else: r += 1
 
     def highlight_text_widget(self, txt_widget, clue_num, is_active_direction):
         txt_widget.tag_remove("highlight", "1.0", tk.END)

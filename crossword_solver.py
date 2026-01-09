@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v17.0")
+        self.root.title("Python .puz Solver - v18.0")
         self.root.geometry("1200x750")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -189,6 +189,9 @@ class CrosswordApp:
         self.root.bind("<Key>", self.handle_keypress)
         self.root.bind("<Tab>", self.handle_tab)
         self.root.bind("<Shift-Tab>", self.handle_shift_tab)
+        # BIND SHIFT-BACKSPACE
+        self.root.bind("<Shift-BackSpace>", self.handle_shift_backspace)
+        
         self.root.bind("<Control_L>", self.handle_ctrl_key)
         self.root.bind("<Control_R>", self.handle_ctrl_key)
         self.root.bind("<Button-1>", lambda e: self.canvas.focus_set())
@@ -259,18 +262,25 @@ class CrosswordApp:
 
     # --- Handlers ---
     def handle_tab(self, event):
-        self.jump_to_next_word(forward=True)
+        # Tab always forces move, but does NOT recursively skip words
+        self.jump_to_next_word(forward=True, skip_full_words=False)
         return "break"
 
     def handle_shift_tab(self, event):
-        self.jump_to_next_word(forward=False)
+        # Shift-Tab always forces move, but does NOT recursively skip words
+        self.jump_to_next_word(forward=False, skip_full_words=False)
+        return "break"
+        
+    def handle_shift_backspace(self, event):
+        # Shift-Backspace: Go to previous word, skipping locked ones
+        self.jump_to_next_word(forward=False, skip_full_words=True)
         return "break"
 
     def handle_ctrl_key(self, event):
         if self.var_ctrl_mode.get() == "word":
             self.reveal_current_word()
-            if self.var_end_behavior.get() == "next":
-                self.jump_to_next_word(forward=True)
+            # FORCE jump to next word immediately after revealing, skipping any full words
+            self.jump_to_next_word(forward=True, skip_full_words=True)
         else:
             self.reveal_current_letter(event)
         return "break"
@@ -884,25 +894,19 @@ class CrosswordApp:
                 else:
                     if len(current_list) > 0: next_clue = current_list[-1]
         if next_clue:
-            # Check if this new word is LOCKED (Correct & ErrorCheck=ON)
             start = next_clue['cell']
             nr, nc = start // self.width, start % self.width
-            
-            # If word is locked and we are skipping full words, jump again
             if skip_full_words and self.is_word_locked(nc, nr, self.direction):
-                # Update cursor temporarily to use visited logic (though we use start cell)
                 new_idx = start
                 if new_idx not in visited_indices:
                     self.cursor_row, self.cursor_col = nr, nc
                     visited_indices.add(new_idx)
                     self.jump_to_next_word(forward, visited_indices, skip_full_words)
                     return
-
             self.cursor_row = nr
             self.cursor_col = nc
             self.refresh_grid()
             self.update_clue_display()
-            
             if self.var_skip_filled.get():
                 dr, dc = (0, 1) if self.direction == 'across' else (1, 0)
                 temp_r, temp_c = self.cursor_row, self.cursor_col
@@ -923,9 +927,8 @@ class CrosswordApp:
                 if found_empty:
                     self.refresh_grid()
                     self.update_clue_display()
-                # If word is full but NOT locked (maybe errors?), we stop at start (handled above)
-                # Unless we wanted to skip full words generally, but request said skip "locked" words.
-                # Currently, standard skip_filled just slides.
+                else:
+                    pass
             
     def on_click(self, event):
         if not self.puzzle: return

@@ -1,3 +1,28 @@
+Here is Version 16.1.
+
+Fix:
+
+Tab / Shift+Tab Navigation:
+
+I modified the logic so that pressing Tab (or Shift+Tab) will always stop at the next/previous word, even if that word is already filled.
+
+It will try to place the cursor on the first empty square of that word. If the word is completely full, it will simply land on the first letter of that word.
+
+This fixes your issue where it was skipping 16A and 15A because they were full.
+
+Typing Flow:
+
+When you are typing letters, the program will still automatically skip over completely filled words to help you speed-solve.
+
+The Code (v16.1)
+
+Copy this entire block and overwrite your file on GitHub.
+
+code
+Python
+download
+content_copy
+expand_less
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz
@@ -9,7 +34,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v16.0")
+        self.root.title("Python .puz Solver - v16.1")
         self.root.geometry("1200x750")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -259,18 +284,20 @@ class CrosswordApp:
 
     # --- Handlers ---
     def handle_tab(self, event):
-        self.jump_to_next_word(forward=True)
+        # Tab always forces move, but does NOT recursively skip words
+        self.jump_to_next_word(forward=True, skip_full_words=False)
         return "break"
 
     def handle_shift_tab(self, event):
-        self.jump_to_next_word(forward=False)
+        # Shift-Tab always forces move, but does NOT recursively skip words
+        self.jump_to_next_word(forward=False, skip_full_words=False)
         return "break"
 
     def handle_ctrl_key(self, event):
         if self.var_ctrl_mode.get() == "word":
             self.reveal_current_word()
             if self.var_end_behavior.get() == "next":
-                self.jump_to_next_word(forward=True)
+                self.jump_to_next_word(forward=True, skip_full_words=False)
         else:
             self.reveal_current_letter(event)
         return "break"
@@ -677,22 +704,12 @@ class CrosswordApp:
             self.update_clue_display()
             self.refresh_grid()
         elif key == "BackSpace":
-            # Strict Backspace: Delete current char if unlocked, move back 1 step within word.
             idx = self.get_index(self.cursor_col, self.cursor_row)
             if not self.is_locked(idx): self.user_grid[idx] = '-'
-            
-            # Check if previous square is valid within current word
-            if self.direction == 'across':
-                prev_c = self.cursor_col - 1
-                if prev_c >= 0 and self.solution_grid[self.get_index(prev_c, self.cursor_row)] != '.':
-                    self.cursor_col = prev_c
-            else:
-                prev_r = self.cursor_row - 1
-                if prev_r >= 0 and self.solution_grid[self.get_index(self.cursor_col, prev_r)] != '.':
-                    self.cursor_row = prev_r
+            if self.direction == 'across': self.move_smart(0, -1)
+            else: self.move_smart(-1, 0)
             self.refresh_grid()
         elif key == "Delete":
-            # Delete current char but don't move
             idx = self.get_index(self.cursor_col, self.cursor_row)
             if not self.is_locked(idx):
                 self.user_grid[idx] = '-'
@@ -811,7 +828,7 @@ class CrosswordApp:
             if not (0 <= r < self.height and 0 <= c < self.width): hit_block = True
             elif self.solution_grid[self.get_index(c, r)] == '.': hit_block = True
             if hit_block:
-                if self.var_end_behavior.get() == "next": self.jump_to_next_word(forward=True)
+                if self.var_end_behavior.get() == "next": self.jump_to_next_word(forward=True, skip_full_words=True)
                 return
             idx = self.get_index(c, r)
             if self.var_skip_filled.get() and self.user_grid[idx] not in ['-', '.']: continue
@@ -821,7 +838,7 @@ class CrosswordApp:
                 self.update_clue_display()
                 return
 
-    def jump_to_next_word(self, forward=True, visited_indices=None):
+    def jump_to_next_word(self, forward=True, visited_indices=None, skip_full_words=False):
         if not self.puzzle: return
         current_idx = self.get_index(self.cursor_col, self.cursor_row)
         if visited_indices is None: visited_indices = {current_idx}
@@ -891,11 +908,11 @@ class CrosswordApp:
                 if found_empty:
                     self.refresh_grid()
                     self.update_clue_display()
-                else:
+                elif skip_full_words:
                     new_idx = self.get_index(self.cursor_col, self.cursor_row)
                     if new_idx not in visited_indices:
                         visited_indices.add(new_idx)
-                        self.jump_to_next_word(forward, visited_indices)
+                        self.jump_to_next_word(forward, visited_indices, skip_full_words)
             
     def on_click(self, event):
         if not self.puzzle: return

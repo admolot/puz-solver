@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v20.0")
+        self.root.title("Python .puz Solver - v21.0")
         self.root.geometry("1200x750")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -188,10 +188,8 @@ class CrosswordApp:
         self.canvas.bind("<Button-1>", self.on_click)
         self.root.bind("<Key>", self.handle_keypress)
         
-        # Robust Tab Binding
         self.root.bind("<Tab>", self.handle_tab)
-        # Shift-Tab is often captured by Tab with state, but we bind it just in case
-        self.root.bind("<Shift-Tab>", lambda e: "break") 
+        self.root.bind("<Shift-Tab>", self.handle_shift_tab)
         
         self.root.bind("<Control_L>", self.handle_ctrl_key)
         self.root.bind("<Control_R>", self.handle_ctrl_key)
@@ -263,11 +261,16 @@ class CrosswordApp:
 
     # --- Handlers ---
     def handle_tab(self, event):
-        # Explicit check for Shift key mask (0x0001)
+        # Shift mask is 0x0001
         if event.state & 0x0001:
             self.jump_to_next_word(forward=False, skip_full_words=True)
         else:
             self.jump_to_next_word(forward=True, skip_full_words=True)
+        return "break"
+
+    def handle_shift_tab(self, event):
+        # Fallback binding if Shift+Tab is caught separately
+        self.jump_to_next_word(forward=False, skip_full_words=True)
         return "break"
 
     def handle_ctrl_key(self, event):
@@ -692,7 +695,6 @@ class CrosswordApp:
         if not self.puzzle: return
         key = event.keysym
         
-        # Shift mask check (0x0001)
         is_shift = (event.state & 0x0001) or (event.state & 1)
 
         if event.state & 0x0004: return "break"
@@ -712,7 +714,6 @@ class CrosswordApp:
                 self.jump_to_next_word(forward=False, skip_full_words=True)
                 return "break"
 
-            # Normal Backspace with Locked Word check
             if self.is_word_locked(self.cursor_col, self.cursor_row, self.direction):
                 self.jump_to_next_word(forward=False, skip_full_words=True)
                 return "break"

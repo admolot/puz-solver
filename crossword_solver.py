@@ -1,28 +1,3 @@
-Here is Version 16.1.
-
-Fix:
-
-Tab / Shift+Tab Navigation:
-
-I modified the logic so that pressing Tab (or Shift+Tab) will always stop at the next/previous word, even if that word is already filled.
-
-It will try to place the cursor on the first empty square of that word. If the word is completely full, it will simply land on the first letter of that word.
-
-This fixes your issue where it was skipping 16A and 15A because they were full.
-
-Typing Flow:
-
-When you are typing letters, the program will still automatically skip over completely filled words to help you speed-solve.
-
-The Code (v16.1)
-
-Copy this entire block and overwrite your file on GitHub.
-
-code
-Python
-download
-content_copy
-expand_less
 import tkinter as tk
 from tkinter import filedialog, messagebox, font
 import puz

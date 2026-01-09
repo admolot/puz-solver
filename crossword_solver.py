@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v22.0")
+        self.root.title("Python .puz Solver - v22.1")
         self.root.geometry("1200x750")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -265,6 +265,10 @@ class CrosswordApp:
             self.jump_to_next_word(forward=False, skip_full_words=True)
         else:
             self.jump_to_next_word(forward=True, skip_full_words=True)
+        return "break"
+
+    def handle_shift_tab(self, event):
+        self.jump_to_next_word(forward=False, skip_full_words=True)
         return "break"
 
     def handle_ctrl_key(self, event):
@@ -689,7 +693,6 @@ class CrosswordApp:
         if not self.puzzle: return
         key = event.keysym
         
-        # Shift mask check
         is_shift = (event.state & 0x0001) or (event.state & 1)
 
         if event.state & 0x0004: return "break"

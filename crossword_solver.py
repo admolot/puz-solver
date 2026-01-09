@@ -9,7 +9,7 @@ import json
 class CrosswordApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Python .puz Solver - v15.0")
+        self.root.title("Python .puz Solver - v16.0")
         self.root.geometry("1200x750")
         
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -677,11 +677,26 @@ class CrosswordApp:
             self.update_clue_display()
             self.refresh_grid()
         elif key == "BackSpace":
+            # Strict Backspace: Delete current char if unlocked, move back 1 step within word.
             idx = self.get_index(self.cursor_col, self.cursor_row)
             if not self.is_locked(idx): self.user_grid[idx] = '-'
-            if self.direction == 'across': self.move_smart(0, -1)
-            else: self.move_smart(-1, 0)
+            
+            # Check if previous square is valid within current word
+            if self.direction == 'across':
+                prev_c = self.cursor_col - 1
+                if prev_c >= 0 and self.solution_grid[self.get_index(prev_c, self.cursor_row)] != '.':
+                    self.cursor_col = prev_c
+            else:
+                prev_r = self.cursor_row - 1
+                if prev_r >= 0 and self.solution_grid[self.get_index(self.cursor_col, prev_r)] != '.':
+                    self.cursor_row = prev_r
             self.refresh_grid()
+        elif key == "Delete":
+            # Delete current char but don't move
+            idx = self.get_index(self.cursor_col, self.cursor_row)
+            if not self.is_locked(idx):
+                self.user_grid[idx] = '-'
+                self.refresh_grid()
         elif len(event.char) == 1 and event.char.isalpha():
             char = event.char.upper()
             idx = self.get_index(self.cursor_col, self.cursor_row)
